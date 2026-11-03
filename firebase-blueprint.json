@@ -1,0 +1,160 @@
+{
+  "entities": {
+    "Article": {
+      "title": "Article",
+      "description": "A published campus journalism story in The Inkspirer portal",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "maxLength": 256 },
+        "deck": { "type": "string", "maxLength": 512 },
+        "category": { "type": "string", "maxLength": 64 },
+        "author": { "type": "string", "maxLength": 128 },
+        "authorRole": { "type": "string", "maxLength": 128 },
+        "authorBio": { "type": "string", "maxLength": 512 },
+        "authorAvatar": { "type": "string", "maxLength": 256 },
+        "date": { "type": "string", "maxLength": 64 },
+        "readTime": { "type": "string", "maxLength": 32 },
+        "featured": { "type": "boolean" },
+        "leadStory": { "type": "boolean" },
+        "content": { "type": "array" },
+        "pullQuote": { "type": "string", "maxLength": 512 },
+        "imageCaption": { "type": "string", "maxLength": 256 },
+        "imageUrl": { "type": "string" },
+        "categoryTheme": { "type": "object" },
+        "views": { "type": "number" },
+        "likes": { "type": "number" },
+        "issue": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["title", "category", "author", "content"]
+    },
+    "Announcement": {
+      "title": "Announcement",
+      "description": "Official campus bulletin or notice for Barobo NHS",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "maxLength": 256 },
+        "type": { "type": "string", "maxLength": 64 },
+        "date": { "type": "string", "maxLength": 64 },
+        "deadline": { "type": "string", "maxLength": 64 },
+        "location": { "type": "string", "maxLength": 128 },
+        "content": { "type": "string", "maxLength": 2048 },
+        "urgent": { "type": "boolean" },
+        "isPinned": { "type": "boolean" }
+      },
+      "required": ["title", "type", "content", "date"]
+    },
+    "PublicationCategory": {
+      "title": "PublicationCategory",
+      "description": "Publication beat or category with custom theme and cover image",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 64 },
+        "slug": { "type": "string", "maxLength": 64 },
+        "description": { "type": "string", "maxLength": 512 },
+        "color": { "type": "string", "maxLength": 32 },
+        "badgeBg": { "type": "string", "maxLength": 64 },
+        "badgeText": { "type": "string", "maxLength": 64 },
+        "iconName": { "type": "string", "maxLength": 64 },
+        "imageUrl": { "type": "string" },
+        "isDefault": { "type": "boolean" }
+      },
+      "required": ["name", "slug", "color"]
+    },
+    "StorySubmission": {
+      "title": "StorySubmission",
+      "description": "Manuscript submitted by a student writer for editorial review",
+      "type": "object",
+      "properties": {
+        "studentName": { "type": "string", "maxLength": 128 },
+        "gradeSection": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 128 },
+        "category": { "type": "string", "maxLength": 64 },
+        "headline": { "type": "string", "maxLength": 256 },
+        "summary": { "type": "string", "maxLength": 512 },
+        "content": { "type": "string" },
+        "notesToEditor": { "type": "string", "maxLength": 512 },
+        "submittedAt": { "type": "string", "maxLength": 64 },
+        "status": { "type": "string", "enum": ["pending", "approved", "revision_requested", "rejected"] },
+        "editorFeedback": { "type": "string", "maxLength": 1024 }
+      },
+      "required": ["studentName", "category", "headline", "content", "status"]
+    },
+    "ArticleComment": {
+      "title": "ArticleComment",
+      "description": "Reader comment posted on an article",
+      "type": "object",
+      "properties": {
+        "articleId": { "type": "string", "maxLength": 128 },
+        "authorName": { "type": "string", "maxLength": 128 },
+        "authorRole": { "type": "string", "maxLength": 128 },
+        "message": { "type": "string", "maxLength": 1024 },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "likes": { "type": "number" }
+      },
+      "required": ["articleId", "authorName", "message"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile with role-based permissions (adviser, editor, contributor, reader)",
+      "type": "object",
+      "properties": {
+        "displayName": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 128 },
+        "role": { "type": "string", "enum": ["adviser", "editor", "contributor", "reader"] },
+        "designation": { "type": "string", "maxLength": 128 },
+        "department": { "type": "string", "maxLength": 128 },
+        "avatarUrl": { "type": "string" }
+      },
+      "required": ["email", "role"]
+    },
+    "StudentAuthorProfile": {
+      "title": "StudentAuthorProfile",
+      "description": "Author bio profile for a student journalist at Barobo National High School",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 128 },
+        "role": { "type": "string", "maxLength": 128 },
+        "gradeSection": { "type": "string", "maxLength": 128 },
+        "beat": { "type": "string", "maxLength": 128 },
+        "bio": { "type": "string", "maxLength": 2048 },
+        "journalismMotto": { "type": "string", "maxLength": 512 },
+        "accolades": { "type": "array" },
+        "photoUrl": { "type": "string" },
+        "avatarSeed": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 128 },
+        "joinedYear": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["name", "role", "bio"]
+    }
+  },
+  "firestore": {
+    "/articles/{articleId}": {
+      "schema": "Article",
+      "description": "Published school articles readable by everyone, managed by advisers & editors"
+    },
+    "/announcements/{announcementId}": {
+      "schema": "Announcement",
+      "description": "Campus announcements & notices readable by everyone, managed by advisers & editors"
+    },
+    "/categories/{categoryId}": {
+      "schema": "PublicationCategory",
+      "description": "Publication beats and categories readable by everyone, managed by advisers & editors"
+    },
+    "/submissions/{submissionId}": {
+      "schema": "StorySubmission",
+      "description": "Student article proposals and manuscripts"
+    },
+    "/comments/{commentId}": {
+      "schema": "ArticleComment",
+      "description": "Reader comments on articles"
+    },
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profiles with publication roles"
+    },
+    "/authorProfiles/{profileId}": {
+      "schema": "StudentAuthorProfile",
+      "description": "Student journalist author bio profiles readable by everyone, managed in the Editorial Desk"
+    }
+  }
+}

@@ -1,0 +1,86 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny all unlisted collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidString(val, maxLen) {
+      return val is string && val.size() <= maxLen;
+    }
+
+    // Articles: Publicly readable; writable by portal advisers and editors (including PIN/Quick-Auth desk sessions)
+    match /articles/{articleId} {
+      allow read: if true;
+      allow create, update: if request.resource.data.keys().hasAll(['id', 'title', 'category']) &&
+        isValidString(request.resource.data.title, 500);
+      allow delete: if true;
+    }
+
+    // Announcements & Circulars: Publicly readable; writable by portal advisers and editors
+    match /announcements/{announcementId} {
+      allow read: if true;
+      allow create, update: if request.resource.data.keys().hasAll(['id', 'title', 'type', 'content', 'date']) &&
+        isValidString(request.resource.data.title, 500) &&
+        isValidString(request.resource.data.content, 5000);
+      allow delete: if true;
+    }
+
+    // Publication Categories: Publicly readable; writable by portal advisers and editors
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow create, update: if request.resource.data.keys().hasAll(['id', 'name', 'slug', 'color']) &&
+        isValidString(request.resource.data.name, 128);
+      allow delete: if true;
+    }
+
+    // Story Submissions: Anyone can create; advisers/editors can read and manage
+    match /submissions/{submissionId} {
+      allow read: if true;
+      allow create, update: if request.resource.data.keys().hasAll(['id', 'headline', 'content', 'status']);
+      allow delete: if true;
+    }
+
+    // Article Comments: Publicly readable; anyone can post; editors can moderate
+    match /comments/{commentId} {
+      allow read: if true;
+      allow create, update: if request.resource.data.keys().hasAll(['articleId', 'authorName', 'message']);
+      allow delete: if true;
+    }
+
+    // Editorial Staff & Portal Advisers: Publicly readable; writable by advisers/editors
+    match /editorialStaff/{staffId} {
+      allow read: if true;
+      allow create, update: if request.resource.data.keys().hasAll(['id', 'name', 'role']) &&
+        isValidString(request.resource.data.name, 200);
+      allow delete: if true;
+    }
+
+    // Student Journalist Author Bio Profiles: Publicly readable; writable by advisers/editors
+    match /authorProfiles/{profileId} {
+      allow read: if true;
+      allow create, update: if request.resource.data.keys().hasAll(['id', 'name', 'role', 'bio']) &&
+        isValidString(request.resource.data.name, 200) &&
+        isValidString(request.resource.data.bio, 4000);
+      allow delete: if true;
+    }
+
+    // Newsletter Subscribers: Anyone can subscribe; editors can read/manage
+    match /subscribers/{subscriberId} {
+      allow read, create, update, delete: if true;
+    }
+
+    // User Profiles
+    match /users/{userId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+  }
+}

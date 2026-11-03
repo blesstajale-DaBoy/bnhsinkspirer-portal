@@ -1,0 +1,8 @@
+{
+  "name": "Remix The Inkspirer - BNHS Publication Portal",
+  "description": "The official digital newsletter and campus journalism portal for Barobo National High School. Features campus news, student editorials, sports coverage, announcements, and an editorial management desk.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
