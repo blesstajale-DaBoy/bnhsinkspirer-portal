@@ -7,6 +7,8 @@ import {
   Category,
   PublicationCategory,
   StudentAuthorProfile,
+  PublicationEditionConfig,
+  generateIssnForVolumeIssue,
 } from '../types';
 import {
   INITIAL_ARTICLES,
@@ -35,6 +37,17 @@ const STORAGE_KEYS = {
   LIKED: 'the_inkspirer_liked_v1',
   CATEGORIES: 'the_inkspirer_categories_v1',
   AUTHOR_PROFILES: 'the_inkspirer_author_profiles_v1',
+  EDITION_CONFIG: 'the_inkspirer_edition_config_v1',
+};
+
+const DEFAULT_EDITION_CONFIG: PublicationEditionConfig = {
+  volumeIssue: 'Vol. XXIV · Issue No. 1',
+  academicYear: 'Academic Year 2026–2027',
+  circulation: 'Circulation: 2,800+ Students & Faculty',
+  issn: 'ISSN 2984-7125 (Electronic)',
+  motto: '“Ideas in ink. Voices in motion.”',
+  taglineDescription:
+    'Campus news, student perspectives, inspiring features, sports highlights, and school announcements—all in one place.',
 };
 
 function stripUndefined<T>(obj: T): T {
@@ -252,6 +265,26 @@ export function useInkspirerStore() {
     }
   });
 
+  const [editionConfig, setEditionConfig] = useState<PublicationEditionConfig>(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEYS.EDITION_CONFIG);
+      if (!stored) return DEFAULT_EDITION_CONFIG;
+      const parsed = JSON.parse(stored);
+      const vol = parsed.volumeIssue || DEFAULT_EDITION_CONFIG.volumeIssue;
+      return {
+        volumeIssue: vol,
+        academicYear: parsed.academicYear || DEFAULT_EDITION_CONFIG.academicYear,
+        circulation: parsed.circulation || DEFAULT_EDITION_CONFIG.circulation,
+        issn: parsed.issn || generateIssnForVolumeIssue(vol),
+        motto: parsed.motto || DEFAULT_EDITION_CONFIG.motto,
+        taglineDescription:
+          parsed.taglineDescription || DEFAULT_EDITION_CONFIG.taglineDescription,
+      };
+    } catch {
+      return DEFAULT_EDITION_CONFIG;
+    }
+  });
+
   const deletedIdsRef = useRef<Set<string>>(new Set());
 
   // Real-time Firestore sync & Auto-seeding
@@ -454,6 +487,46 @@ export function useInkspirerStore() {
       }
     );
 
+    // 7. Publication Edition Config (Volume, Issue No., Academic Year, Circulation & ISSN) Firestore listener
+    const unsubEdition = onSnapshot(
+      doc(db, 'publicationSettings', 'edition'),
+      (snap) => {
+        if (snap.exists()) {
+          const data = snap.data() as Partial<PublicationEditionConfig>;
+          if (
+            data.volumeIssue ||
+            data.academicYear ||
+            data.circulation ||
+            data.issn ||
+            data.motto ||
+            data.taglineDescription
+          ) {
+            setEditionConfig((prev) => {
+              const nextVol = data.volumeIssue || prev.volumeIssue || DEFAULT_EDITION_CONFIG.volumeIssue;
+              const next: PublicationEditionConfig = {
+                volumeIssue: nextVol,
+                academicYear: data.academicYear || prev.academicYear || DEFAULT_EDITION_CONFIG.academicYear,
+                circulation: data.circulation || prev.circulation || DEFAULT_EDITION_CONFIG.circulation,
+                issn: data.issn || prev.issn || generateIssnForVolumeIssue(nextVol),
+                motto: data.motto || prev.motto || DEFAULT_EDITION_CONFIG.motto,
+                taglineDescription:
+                  data.taglineDescription ||
+                  prev.taglineDescription ||
+                  DEFAULT_EDITION_CONFIG.taglineDescription,
+              };
+              safeLocalStorageSet(STORAGE_KEYS.EDITION_CONFIG, next);
+              return next;
+            });
+          }
+        } else {
+          safeSetDoc('publicationSettings', 'edition', DEFAULT_EDITION_CONFIG);
+        }
+      },
+      (err) => {
+        console.warn('Firestore editionConfig listener info:', err.message);
+      }
+    );
+
     return () => {
       unsubArticles();
       unsubAnnouncements();
@@ -461,6 +534,7 @@ export function useInkspirerStore() {
       unsubSubmissions();
       unsubStaff();
       unsubAuthorProfiles();
+      unsubEdition();
     };
   }, []);
 
@@ -1153,6 +1227,55 @@ export function useInkspirerStore() {
     });
   };
 
+  const updateEditionConfig = (
+    updated: Partial<PublicationEditionConfig>,
+    syncLeadStoryIssue = false
+  ) => {
+    setEditionConfig((prev) => {
+      const nextVol = updated.volumeIssue?.trim() || prev.volumeIssue;
+      const volChanged = nextVol.toLowerCase() !== prev.volumeIssue.toLowerCase();
+      const explicitIssn = updated.issn?.trim();
+
+      let nextIssn = prev.issn || DEFAULT_EDITION_CONFIG.issn!;
+      if (explicitIssn && (!volChanged || explicitIssn !== prev.issn)) {
+        nextIssn = explicitIssn;
+      } else if (volChanged) {
+        nextIssn = generateIssnForVolumeIssue(nextVol);
+      }
+
+      const next: PublicationEditionConfig = {
+        volumeIssue: nextVol,
+        academicYear: updated.academicYear?.trim() || prev.academicYear,
+        circulation: updated.circulation?.trim() || prev.circulation || DEFAULT_EDITION_CONFIG.circulation,
+        issn: nextIssn,
+        motto: updated.motto?.trim() || prev.motto || DEFAULT_EDITION_CONFIG.motto,
+        taglineDescription:
+          updated.taglineDescription?.trim() ||
+          prev.taglineDescription ||
+          DEFAULT_EDITION_CONFIG.taglineDescription,
+      };
+      safeLocalStorageSet(STORAGE_KEYS.EDITION_CONFIG, next);
+      safeSetDoc('publicationSettings', 'edition', next);
+
+      if (syncLeadStoryIssue && next.volumeIssue) {
+        setArticles((prevArts) => {
+          const updatedArts = prevArts.map((art) => {
+            if (art.leadStory) {
+              const updArt = stripUndefined({ ...art, issue: next.volumeIssue });
+              safeSetDoc('articles', updArt.id, updArt);
+              return updArt;
+            }
+            return art;
+          });
+          safeLocalStorageSet(STORAGE_KEYS.ARTICLES, updatedArts);
+          return updatedArts;
+        });
+      }
+
+      return next;
+    });
+  };
+
   // Reset to factory demo data in state & Firestore
   const resetToDefaults = () => {
     setArticles(INITIAL_ARTICLES);
@@ -1161,6 +1284,7 @@ export function useInkspirerStore() {
     setStaff(INITIAL_EDITORIAL_STAFF);
     setCategories(INITIAL_CATEGORIES);
     setAuthorProfiles(INITIAL_AUTHOR_PROFILES);
+    setEditionConfig(DEFAULT_EDITION_CONFIG);
     setBookmarks([]);
     setLikedArticles([]);
     setReadingProgressMap({});
@@ -1188,6 +1312,7 @@ export function useInkspirerStore() {
     INITIAL_AUTHOR_PROFILES.forEach((prof) => {
       safeSetDoc('authorProfiles', prof.id, prof);
     });
+    safeSetDoc('publicationSettings', 'edition', DEFAULT_EDITION_CONFIG);
   };
 
   return {
@@ -1197,6 +1322,7 @@ export function useInkspirerStore() {
     staff,
     categories,
     authorProfiles,
+    editionConfig,
     bookmarks,
     readingProgressMap,
     likedArticles,
@@ -1225,6 +1351,7 @@ export function useInkspirerStore() {
     addAuthorProfile,
     updateAuthorProfile,
     deleteAuthorProfile,
+    updateEditionConfig,
     resetToDefaults,
   };
 }

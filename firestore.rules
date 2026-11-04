@@ -77,6 +77,11 @@ service cloud.firestore {
       allow read, create, update, delete: if true;
     }
 
+    // Publication Masthead & Edition Settings (Volume, Issue No., Academic Year)
+    match /publicationSettings/{settingId} {
+      allow read, create, update, delete: if true;
+    }
+
     // User Profiles
     match /users/{userId} {
       allow read: if true;

@@ -49,6 +49,8 @@ export default function App() {
     addAuthorProfile,
     updateAuthorProfile,
     deleteAuthorProfile,
+    editionConfig,
+    updateEditionConfig,
     resetToDefaults,
   } = useInkspirerStore();
 
@@ -206,6 +208,13 @@ export default function App() {
           setShowingBookmarksOnly(false);
         }}
         categories={categories}
+        editionConfig={editionConfig}
+        onUpdateEditionConfig={updateEditionConfig}
+        announcements={announcements}
+        onAddAnnouncement={addAnnouncement}
+        onUpdateAnnouncement={updateAnnouncement}
+        onDeleteAnnouncement={deleteAnnouncement}
+        onTogglePinAnnouncement={togglePinAnnouncement}
       />
 
       {/* Main Content Area */}
@@ -273,6 +282,7 @@ export default function App() {
         onOpenDownloadPortal={() => setIsDownloadOpen(true)}
         onOpenEditorialDesk={() => setIsEditorialDeskOpen(true)}
         categories={categories}
+        editionConfig={editionConfig}
       />
 
       {/* Reader Modal */}
@@ -363,6 +373,8 @@ export default function App() {
         onAddAuthorProfile={addAuthorProfile}
         onUpdateAuthorProfile={updateAuthorProfile}
         onDeleteAuthorProfile={deleteAuthorProfile}
+        editionConfig={editionConfig}
+        onUpdateEditionConfig={updateEditionConfig}
         onViewArticle={handleSelectArticle}
         onResetDefaults={resetToDefaults}
       />

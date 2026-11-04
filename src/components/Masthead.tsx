@@ -1,6 +1,18 @@
 import React from 'react';
-import { Download, Feather, Bookmark, Printer, ShieldCheck } from 'lucide-react';
-import { Category, PublicationCategory } from '../types';
+import {
+  Download,
+  Feather,
+  Bookmark,
+  Printer,
+  ShieldCheck,
+} from 'lucide-react';
+import {
+  Category,
+  PublicationCategory,
+  PublicationEditionConfig,
+  Announcement,
+  generateIssnForVolumeIssue,
+} from '../types';
 import { InkspirerLogo } from './InkspirerLogo';
 import { FacebookQrCode } from './FacebookQrCode';
 import { PhilippineTimeWeatherWidget } from './PhilippineTimeWeatherWidget';
@@ -16,6 +28,13 @@ interface MastheadProps {
   activeCategory?: Category | 'All';
   onSelectCategory?: (cat: Category | 'All') => void;
   categories?: PublicationCategory[];
+  editionConfig?: PublicationEditionConfig;
+  onUpdateEditionConfig?: (updated: Partial<PublicationEditionConfig>, syncLeadStoryIssue?: boolean) => void;
+  announcements?: Announcement[];
+  onAddAnnouncement?: (ann: Omit<Announcement, 'id'>) => Announcement;
+  onUpdateAnnouncement?: (id: string, updated: Partial<Announcement>) => void;
+  onDeleteAnnouncement?: (id: string) => void;
+  onTogglePinAnnouncement?: (id: string) => void;
 }
 
 const DEFAULT_MASTHEAD_MENUS: { id: string; name: string; color: string; description: string }[] = [
@@ -37,7 +56,17 @@ export const Masthead: React.FC<MastheadProps> = ({
   activeCategory = 'All',
   onSelectCategory,
   categories,
+  editionConfig,
 }) => {
+  const currentVolumeIssue = editionConfig?.volumeIssue || 'Vol. XXIV · Issue No. 1';
+  const currentAcademicYear = editionConfig?.academicYear || 'Academic Year 2026–2027';
+  const currentCirculation = editionConfig?.circulation || 'Circulation: 2,800+ Students & Faculty';
+  const currentIssn = editionConfig?.issn || generateIssnForVolumeIssue(currentVolumeIssue);
+  const currentMotto = editionConfig?.motto || '“Ideas in ink. Voices in motion.”';
+  const currentTaglineDescription =
+    editionConfig?.taglineDescription ||
+    'Campus news, student perspectives, inspiring features, sports highlights, and school announcements—all in one place.';
+
   const menuList =
     categories && categories.length > 0 ? categories : DEFAULT_MASTHEAD_MENUS;
 
@@ -63,12 +92,13 @@ export const Masthead: React.FC<MastheadProps> = ({
             <span>Division of Surigao del Sur</span>
           </div>
 
-          <div className="flex items-center gap-4 text-stone-300">
-            <span>Vol. XXIV · Issue No. 1</span>
+          <div className="flex flex-wrap items-center gap-4 text-stone-300">
+            <span>{currentVolumeIssue}</span>
             <span aria-hidden="true" className="text-stone-500">·</span>
-            <span>Academic Year 2026–2027</span>
+            <span>{currentAcademicYear}</span>
             <span aria-hidden="true" className="text-stone-500">·</span>
             <button
+              type="button"
               onClick={() => window.print()}
               className="hover:text-white inline-flex items-center gap-1 transition-colors text-stone-300 cursor-pointer"
               title="Print newspaper edition"
@@ -132,10 +162,10 @@ export const Masthead: React.FC<MastheadProps> = ({
             THE OFFICIAL DIGITAL NEWSLETTER PORTAL
           </p>
           <p className="font-serif italic text-xl sm:text-2xl text-stone-100">
-            “Ideas in ink. Voices in motion.”
+            {currentMotto}
           </p>
           <p className="max-w-2xl mx-auto text-sm sm:text-base text-stone-200 leading-relaxed pt-2">
-            Campus news, student perspectives, inspiring features, sports highlights, and school announcements—all in one place.
+            {currentTaglineDescription}
           </p>
         </div>
 
@@ -216,10 +246,13 @@ export const Masthead: React.FC<MastheadProps> = ({
             </button>
 
             {menuList.map((cat) => {
+              const isAnnouncementsCat =
+                cat.name.toLowerCase() === 'announcements' ||
+                cat.name.toLowerCase() === 'announcement';
               const isActive =
                 !showingBookmarks &&
                 (activeCategory.toLowerCase() === cat.name.toLowerCase() ||
-                  (cat.name.toLowerCase() === 'announcements' &&
+                  (isAnnouncementsCat &&
                     activeCategory.toLowerCase() === 'announcement'));
               return (
                 <button
@@ -263,12 +296,14 @@ export const Masthead: React.FC<MastheadProps> = ({
             <span>Regulated by Republic Act No. 7079 (Campus Journalism Act of 1991)</span>
           </div>
           <div className="flex items-center gap-4">
-            <span className="text-stone-200 font-medium">Circulation: 2,800+ Students & Faculty</span>
+            <span className="text-stone-200 font-medium">{currentCirculation}</span>
             <span aria-hidden="true" className="text-stone-500">·</span>
-            <span>ISSN 2984-7125 (Electronic)</span>
+            <span>{currentIssn}</span>
           </div>
         </div>
       </div>
     </div>
   );
 };
+
+

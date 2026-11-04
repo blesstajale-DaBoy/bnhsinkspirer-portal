@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { Category, StorySubmission, PublicationCategory, Article } from '../types';
 import { downloadSubmissionTextFile } from '../utils/exporter';
+import { InkspirerLogo } from './InkspirerLogo';
 
 interface SubmitStoryModalProps {
   isOpen: boolean;
@@ -147,29 +148,54 @@ export const SubmitStoryModal: React.FC<SubmitStoryModalProps> = ({
   const wordCount = content.trim() ? content.trim().split(/\s+/).length : 0;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-stone-900/80 backdrop-blur-xs flex justify-center p-3 sm:p-6">
-      <div className="bg-white text-[#1C1917] w-full max-w-2xl rounded-lg shadow-2xl border border-stone-200 flex flex-col overflow-hidden my-auto">
-        {/* Modal Header */}
-        <div className="bg-[#0B2545] text-white p-6 flex items-center justify-between">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-stone-950/80 backdrop-blur-xs flex justify-center p-3 sm:p-6">
+      <div className="bg-white text-[#1C1917] w-full max-w-2xl rounded-lg shadow-2xl border border-[#681622] flex flex-col overflow-hidden my-auto">
+        {/* Maroon Modal Navigation Header */}
+        <div className="bg-[#4A0E17] text-white px-6 py-4 border-b border-[#34070E] flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded bg-[#D4AF37]/20 flex items-center justify-center text-[#D4AF37]">
-              <Feather className="w-5 h-5" />
-            </div>
+            <InkspirerLogo size="sm" />
             <div>
-              <div className="text-[11px] font-semibold tracking-widest uppercase text-[#D4AF37]">
+              <div className="text-[11px] font-semibold tracking-widest uppercase text-[#F3C562]">
                 Barobo National High School · Campus Press
               </div>
-              <h2 className="font-serif text-2xl font-bold tracking-tight">
+              <h2 className="font-serif text-xl sm:text-2xl font-bold tracking-tight text-white">
                 Submit a Story to The Inkspirer
               </h2>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded text-stone-300 hover:text-white hover:bg-white/10 transition-colors"
+            className="p-1.5 rounded text-stone-300 hover:text-white hover:bg-[#5C1521] transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
+        </div>
+
+        {/* Maroon Sub-Navigation Bar */}
+        <div className="bg-[#38080F] text-stone-200 px-6 py-2.5 border-b border-[#58111A] flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div className="flex items-center gap-2">
+            <Feather className="w-3.5 h-3.5 text-[#D4AF37]" />
+            <span className="font-semibold text-[#F3C562]">Student Contributor Portal</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleFillSample}
+              className="px-2.5 py-1 text-[11px] font-bold text-[#2A050B] bg-[#D4AF37] hover:bg-[#F3C562] rounded transition-colors cursor-pointer"
+            >
+              Load Sample Article
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onOpenEditorialDesk();
+              }}
+              className="px-2.5 py-1 text-[11px] font-semibold text-stone-200 bg-[#4A0E17] hover:bg-[#5C1521] border border-[#681622] rounded transition-colors cursor-pointer"
+            >
+              Editorial Desk →
+            </button>
+          </div>
         </div>
 
         {/* Modal Content */}
@@ -269,7 +295,7 @@ export const SubmitStoryModal: React.FC<SubmitStoryModalProps> = ({
                     onClose();
                     onOpenEditorialDesk();
                   }}
-                  className="px-4 py-2 text-xs font-semibold text-white bg-[#0B2545] hover:bg-[#133E87] rounded transition-colors flex items-center gap-1.5 cursor-pointer"
+                  className="px-4 py-2 text-xs font-semibold text-white bg-[#4A0E17] hover:bg-[#5C1521] rounded transition-colors flex items-center gap-1.5 cursor-pointer"
                 >
                   <span>Open Editorial Desk</span>
                 </button>
@@ -287,14 +313,14 @@ export const SubmitStoryModal: React.FC<SubmitStoryModalProps> = ({
             <form onSubmit={handleSubmitToDesk} className="space-y-5">
               {/* Guidance Ribbon */}
               <div className="bg-[#FBF9F5] border border-stone-200 rounded p-4 flex items-start gap-3 text-xs text-stone-600">
-                <HelpCircle className="w-4 h-4 text-[#133E87] shrink-0 mt-0.5" />
+                <HelpCircle className="w-4 h-4 text-[#4A0E17] shrink-0 mt-0.5" />
                 <div className="flex-1">
                   <strong className="text-stone-800">For Aspiring Student Journalists & Writers:</strong> You can download your article as a formatted text file (.txt) OR submit directly to the live editorial desk for publication review!
                 </div>
                 <button
                   type="button"
                   onClick={handleFillSample}
-                  className="text-xs font-semibold text-[#133E87] hover:underline shrink-0 whitespace-nowrap"
+                  className="text-xs font-semibold text-[#4A0E17] hover:underline shrink-0 whitespace-nowrap cursor-pointer"
                 >
                   Load Sample Article
                 </button>
@@ -318,7 +344,7 @@ export const SubmitStoryModal: React.FC<SubmitStoryModalProps> = ({
                     value={studentName}
                     onChange={(e) => setStudentName(e.target.value)}
                     placeholder="e.g. Maria Angela Santos"
-                    className="w-full px-3 py-2 text-xs border border-stone-300 rounded focus:ring-1 focus:ring-[#0B2545] focus:border-[#0B2545] focus:outline-none"
+                    className="w-full px-3 py-2 text-xs border border-stone-300 rounded focus:ring-1 focus:ring-[#4A0E17] focus:border-[#4A0E17] focus:outline-none"
                   />
                 </div>
 
@@ -331,7 +357,7 @@ export const SubmitStoryModal: React.FC<SubmitStoryModalProps> = ({
                     value={gradeSection}
                     onChange={(e) => setGradeSection(e.target.value)}
                     placeholder="e.g. Grade 11 STEM - Emerald"
-                    className="w-full px-3 py-2 text-xs border border-stone-300 rounded focus:ring-1 focus:ring-[#0B2545] focus:border-[#0B2545] focus:outline-none"
+                    className="w-full px-3 py-2 text-xs border border-stone-300 rounded focus:ring-1 focus:ring-[#4A0E17] focus:border-[#4A0E17] focus:outline-none"
                   />
                 </div>
               </div>
@@ -346,7 +372,7 @@ export const SubmitStoryModal: React.FC<SubmitStoryModalProps> = ({
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="student@bnhs.deped.edu.ph"
-                    className="w-full px-3 py-2 text-xs border border-stone-300 rounded focus:ring-1 focus:ring-[#0B2545] focus:border-[#0B2545] focus:outline-none"
+                    className="w-full px-3 py-2 text-xs border border-stone-300 rounded focus:ring-1 focus:ring-[#4A0E17] focus:border-[#4A0E17] focus:outline-none"
                   />
                 </div>
 
@@ -357,7 +383,7 @@ export const SubmitStoryModal: React.FC<SubmitStoryModalProps> = ({
                   <select
                     value={category}
                     onChange={(e) => setCategory(e.target.value as Category)}
-                    className="w-full px-3 py-2 text-xs border border-stone-300 rounded bg-white focus:ring-1 focus:ring-[#0B2545] focus:border-[#0B2545] focus:outline-none font-medium"
+                    className="w-full px-3 py-2 text-xs border border-stone-300 rounded bg-white focus:ring-1 focus:ring-[#4A0E17] focus:border-[#4A0E17] focus:outline-none font-medium"
                   >
                     {categories && categories.length > 0 ? (
                       categories.map((c) => (
@@ -389,7 +415,7 @@ export const SubmitStoryModal: React.FC<SubmitStoryModalProps> = ({
                   value={headline}
                   onChange={(e) => setHeadline(e.target.value)}
                   placeholder="e.g. Behind the Corridors: How BNHS Scholars Balance Passion and Academics"
-                  className="w-full px-3 py-2 text-xs border border-stone-300 rounded font-serif text-sm focus:ring-1 focus:ring-[#0B2545] focus:border-[#0B2545] focus:outline-none"
+                  className="w-full px-3 py-2 text-xs border border-stone-300 rounded font-serif text-sm focus:ring-1 focus:ring-[#4A0E17] focus:border-[#4A0E17] focus:outline-none"
                 />
               </div>
 
@@ -403,7 +429,7 @@ export const SubmitStoryModal: React.FC<SubmitStoryModalProps> = ({
                   value={summary}
                   onChange={(e) => setSummary(e.target.value)}
                   placeholder="A quick summary of why this story matters to the student body..."
-                  className="w-full px-3 py-2 text-xs border border-stone-300 rounded focus:ring-1 focus:ring-[#0B2545] focus:border-[#0B2545] focus:outline-none"
+                  className="w-full px-3 py-2 text-xs border border-stone-300 rounded focus:ring-1 focus:ring-[#4A0E17] focus:border-[#4A0E17] focus:outline-none"
                 />
               </div>
 
@@ -423,7 +449,7 @@ export const SubmitStoryModal: React.FC<SubmitStoryModalProps> = ({
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
                   placeholder="Write or paste your article here. Separate paragraphs with double enter..."
-                  className="w-full px-3 py-2 text-xs border border-stone-300 rounded font-sans leading-relaxed focus:ring-1 focus:ring-[#0B2545] focus:border-[#0B2545] focus:outline-none"
+                  className="w-full px-3 py-2 text-xs border border-stone-300 rounded font-sans leading-relaxed focus:ring-1 focus:ring-[#4A0E17] focus:border-[#4A0E17] focus:outline-none"
                 />
               </div>
 
@@ -437,7 +463,7 @@ export const SubmitStoryModal: React.FC<SubmitStoryModalProps> = ({
                   value={notesToEditor}
                   onChange={(e) => setNotesToEditor(e.target.value)}
                   placeholder="e.g. Sources interviewed, available photos, suggestions for layout..."
-                  className="w-full px-3 py-2 text-xs border border-stone-300 rounded focus:ring-1 focus:ring-[#0B2545] focus:border-[#0B2545] focus:outline-none"
+                  className="w-full px-3 py-2 text-xs border border-stone-300 rounded focus:ring-1 focus:ring-[#4A0E17] focus:border-[#4A0E17] focus:outline-none"
                 />
               </div>
 
@@ -446,7 +472,7 @@ export const SubmitStoryModal: React.FC<SubmitStoryModalProps> = ({
                 <button
                   type="button"
                   onClick={handleDownloadTxt}
-                  className="w-full sm:w-auto px-4 py-2.5 text-xs font-medium text-stone-700 bg-stone-100 hover:bg-stone-200 rounded border border-stone-300 transition-colors flex items-center justify-center gap-2"
+                  className="w-full sm:w-auto px-4 py-2.5 text-xs font-medium text-stone-700 bg-stone-100 hover:bg-stone-200 rounded border border-stone-300 transition-colors flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5 text-stone-600" />
                   <span>Download .txt File</span>
@@ -456,16 +482,16 @@ export const SubmitStoryModal: React.FC<SubmitStoryModalProps> = ({
                   <button
                     type="button"
                     onClick={onClose}
-                    className="px-4 py-2.5 text-xs font-medium text-stone-600 hover:text-stone-900 rounded transition-colors"
+                    className="px-4 py-2.5 text-xs font-medium text-stone-600 hover:text-stone-900 rounded transition-colors cursor-pointer"
                   >
                     Cancel
                   </button>
 
                   <button
                     type="submit"
-                    className="px-4 py-2.5 text-xs font-semibold text-[#0B2545] bg-stone-100 hover:bg-stone-200 border border-stone-300 rounded transition-colors flex items-center justify-center gap-1.5"
+                    className="px-4 py-2.5 text-xs font-semibold text-white bg-[#4A0E17] hover:bg-[#5C1521] border border-[#34070E] rounded transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                   >
-                    <Send className="w-3.5 h-3.5" />
+                    <Send className="w-3.5 h-3.5 text-[#D4AF37]" />
                     <span>Submit to Queue</span>
                   </button>
 
@@ -473,9 +499,9 @@ export const SubmitStoryModal: React.FC<SubmitStoryModalProps> = ({
                     <button
                       type="button"
                       onClick={handlePublishDirectly}
-                      className="px-5 py-2.5 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+                      className="px-5 py-2.5 text-xs font-bold text-[#2A050B] bg-[#D4AF37] hover:bg-[#F3C562] rounded transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
                     >
-                      <CheckCircle2 className="w-4 h-4" />
+                      <CheckCircle2 className="w-4 h-4 text-[#4A0E17]" />
                       <span>Publish Live Now</span>
                     </button>
                   )}

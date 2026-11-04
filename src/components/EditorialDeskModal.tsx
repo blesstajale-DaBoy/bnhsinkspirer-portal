@@ -48,6 +48,9 @@ import {
   PortalAdviserConfig,
   AdviserHandoverRecord,
   StudentAuthorProfile,
+  PublicationEditionConfig,
+  generateIssnForVolumeIssue,
+  generateRandomElectronicIssn,
 } from '../types';
 import { downloadSubmissionTextFile } from '../utils/exporter';
 import { useAuth } from '../context/AuthContext';
@@ -148,6 +151,8 @@ interface EditorialDeskModalProps {
   onAddAuthorProfile?: (profile: Omit<StudentAuthorProfile, 'id'>) => StudentAuthorProfile;
   onUpdateAuthorProfile?: (id: string, updated: Partial<StudentAuthorProfile>, previousName?: string) => void;
   onDeleteAuthorProfile?: (id: string) => void;
+  editionConfig?: PublicationEditionConfig;
+  onUpdateEditionConfig?: (updated: Partial<PublicationEditionConfig>, syncLeadStoryIssue?: boolean) => void;
   onViewArticle?: (art: Article) => void;
   onResetDefaults: () => void;
 }
@@ -180,6 +185,8 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
   onAddAuthorProfile,
   onUpdateAuthorProfile,
   onDeleteAuthorProfile,
+  editionConfig,
+  onUpdateEditionConfig,
   onViewArticle,
   onResetDefaults,
 }) => {
@@ -459,7 +466,98 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
   const [lastPublishedArticle, setLastPublishedArticle] = useState<Article | null>(null);
   const [composerError, setComposerError] = useState('');
 
+  // Publication Volume, Issue No., Academic Year, Circulation, ISSN, Motto & Tagline Editor state (kept strictly above early return)
+  const currentVolumeIssue = editionConfig?.volumeIssue || 'Vol. XXIV · Issue No. 1';
+  const currentAcademicYear = editionConfig?.academicYear || 'Academic Year 2026–2027';
+  const currentCirculation = editionConfig?.circulation || 'Circulation: 2,800+ Students & Faculty';
+  const currentIssn = editionConfig?.issn || generateIssnForVolumeIssue(currentVolumeIssue);
+  const currentMotto = editionConfig?.motto || '“Ideas in ink. Voices in motion.”';
+  const currentTaglineDescription =
+    editionConfig?.taglineDescription ||
+    'Campus news, student perspectives, inspiring features, sports highlights, and school announcements—all in one place.';
+
+  const [isEditEditionModalOpen, setIsEditEditionModalOpen] = useState(false);
+  const [isEditMottoModalOpen, setIsEditMottoModalOpen] = useState(false);
+  const [deskVolumeIssue, setDeskVolumeIssue] = useState(currentVolumeIssue);
+  const [deskAcademicYear, setDeskAcademicYear] = useState(currentAcademicYear);
+  const [deskCirculation, setDeskCirculation] = useState(currentCirculation);
+  const [deskIssn, setDeskIssn] = useState(currentIssn);
+  const [deskMotto, setDeskMotto] = useState(currentMotto);
+  const [deskTaglineDescription, setDeskTaglineDescription] = useState(currentTaglineDescription);
+  const [deskIssnAutoNotice, setDeskIssnAutoNotice] = useState(false);
+  const [deskSyncLeadIssue, setDeskSyncLeadIssue] = useState(true);
+
+  useEffect(() => {
+    setDeskVolumeIssue(currentVolumeIssue);
+    setDeskAcademicYear(currentAcademicYear);
+    setDeskCirculation(currentCirculation);
+    setDeskIssn(currentIssn);
+    setDeskMotto(currentMotto);
+    setDeskTaglineDescription(currentTaglineDescription);
+  }, [
+    currentVolumeIssue,
+    currentAcademicYear,
+    currentCirculation,
+    currentIssn,
+    currentMotto,
+    currentTaglineDescription,
+  ]);
+
   if (!isOpen) return null;
+
+  const handleDeskVolumeIssueChange = (newVolumeIssue: string) => {
+    setDeskVolumeIssue(newVolumeIssue);
+    const autoIssn = generateIssnForVolumeIssue(newVolumeIssue);
+    setDeskIssn(autoIssn);
+    setDeskIssnAutoNotice(true);
+  };
+
+  const handleSaveEditionFromDesk = (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanVol = deskVolumeIssue.trim() || 'Vol. XXIV · Issue No. 1';
+    const cleanAy = deskAcademicYear.trim() || 'Academic Year 2026–2027';
+    const cleanCirc = deskCirculation.trim() || 'Circulation: 2,800+ Students & Faculty';
+    const cleanIssn = deskIssn.trim() || generateIssnForVolumeIssue(cleanVol);
+    const cleanMotto = deskMotto.trim() || '“Ideas in ink. Voices in motion.”';
+    const cleanTagline =
+      deskTaglineDescription.trim() ||
+      'Campus news, student perspectives, inspiring features, sports highlights, and school announcements—all in one place.';
+
+    onUpdateEditionConfig?.(
+      {
+        volumeIssue: cleanVol,
+        academicYear: cleanAy,
+        circulation: cleanCirc,
+        issn: cleanIssn,
+        motto: cleanMotto,
+        taglineDescription: cleanTagline,
+      },
+      deskSyncLeadIssue
+    );
+    setIsEditEditionModalOpen(false);
+    setIsEditMottoModalOpen(false);
+    setDeskIssnAutoNotice(false);
+    showToast(`Updated Publication Settings (${cleanVol} · ${cleanAy})!`);
+  };
+
+  const handleSaveMottoFromDesk = (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanMotto = deskMotto.trim() || '“Ideas in ink. Voices in motion.”';
+    const cleanTagline =
+      deskTaglineDescription.trim() ||
+      'Campus news, student perspectives, inspiring features, sports highlights, and school announcements—all in one place.';
+
+    onUpdateEditionConfig?.({
+      volumeIssue: currentVolumeIssue,
+      academicYear: currentAcademicYear,
+      circulation: currentCirculation,
+      issn: currentIssn,
+      motto: cleanMotto,
+      taglineDescription: cleanTagline,
+    });
+    setIsEditMottoModalOpen(false);
+    showToast('Updated Publication Motto & Masthead Description!');
+  };
 
   const showToast = (msg: string) => {
     setDeskToast(msg);
@@ -1192,7 +1290,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
       pullQuote: composerPullQuote.trim() || undefined,
       imageCaption: composerCaption.trim() || undefined,
       categoryTheme,
-      issue: 'Vol. XXIV · Issue 1',
+      issue: currentVolumeIssue,
     });
 
     setLastPublishedArticle(createdArt);
@@ -1387,6 +1485,58 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
 
             {isAuthenticated && (
               <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeskVolumeIssue(currentVolumeIssue);
+                    setDeskAcademicYear(currentAcademicYear);
+                    setDeskCirculation(currentCirculation);
+                    setDeskIssn(currentIssn);
+                    setDeskMotto(currentMotto);
+                    setDeskTaglineDescription(currentTaglineDescription);
+                    setDeskIssnAutoNotice(false);
+                    setIsEditEditionModalOpen(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-semibold bg-[#34070E]/90 hover:bg-[#5C1521] border border-[#D4AF37]/50 text-[#F3C562] transition-colors cursor-pointer"
+                  title="Edit Publication Volume, Issue No. & School Year (S.Y.)"
+                >
+                  <Edit3 className="w-3.5 h-3.5 text-[#D4AF37]" />
+                  <span>Edit Issue & S.Y.</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeskVolumeIssue(currentVolumeIssue);
+                    setDeskAcademicYear(currentAcademicYear);
+                    setDeskCirculation(currentCirculation);
+                    setDeskIssn(currentIssn);
+                    setDeskMotto(currentMotto);
+                    setDeskTaglineDescription(currentTaglineDescription);
+                    setDeskIssnAutoNotice(false);
+                    setIsEditEditionModalOpen(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-semibold bg-[#34070E]/90 hover:bg-[#5C1521] border border-[#D4AF37]/50 text-[#F3C562] transition-colors cursor-pointer"
+                  title="Edit Announcements Circulation & Electronic ISSN"
+                >
+                  <Edit3 className="w-3.5 h-3.5 text-[#D4AF37]" />
+                  <span>Edit Circulation & ISSN</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeskMotto(currentMotto);
+                    setDeskTaglineDescription(currentTaglineDescription);
+                    setIsEditMottoModalOpen(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-semibold bg-[#34070E]/90 hover:bg-[#5C1521] border border-[#D4AF37]/50 text-[#F3C562] transition-colors cursor-pointer"
+                  title="Edit “Ideas in ink. Voices in motion.” & Masthead Subtitle Description"
+                >
+                  <Edit3 className="w-3.5 h-3.5 text-[#D4AF37]" />
+                  <span>Edit Motto & Tagline</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={() => setIsSidebarOpen((prev) => !prev)}
@@ -2754,13 +2904,63 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
               {/* TAB 4: CAMPUS ANNOUNCEMENTS */}
               {activeTab === 'announcements' && (
                 <div className="space-y-6">
-                  <div className="border-b border-stone-200 pb-3">
-                    <h3 className="font-serif text-xl font-bold text-stone-900">
-                      Manage Campus Announcements & Circulars
-                    </h3>
-                    <p className="text-xs text-stone-500 mt-1">
-                      Post examination schedules, press conferences, and school notices to the top announcement ticker and gazette.
-                    </p>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-200 pb-3">
+                    <div>
+                      <h3 className="font-serif text-xl font-bold text-stone-900">
+                        Manage Campus Announcements & Circulars
+                      </h3>
+                      <p className="text-xs text-stone-500 mt-1">
+                        Post examination schedules, press conferences, and school notices to the top announcement ticker and gazette.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDeskVolumeIssue(currentVolumeIssue);
+                          setDeskAcademicYear(currentAcademicYear);
+                          setDeskCirculation(currentCirculation);
+                          setDeskIssn(currentIssn);
+                          setDeskMotto(currentMotto);
+                          setDeskTaglineDescription(currentTaglineDescription);
+                          setDeskIssnAutoNotice(false);
+                          setIsEditEditionModalOpen(true);
+                        }}
+                        className="px-3 py-1.5 text-xs font-bold text-[#2A050B] bg-[#D4AF37] hover:bg-[#F3C562] rounded-md transition-colors flex items-center gap-1.5 shadow-xs shrink-0 cursor-pointer"
+                      >
+                        <Edit3 className="w-3.5 h-3.5 text-[#4A0E17]" />
+                        <span>Edit Issue & S.Y.</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDeskVolumeIssue(currentVolumeIssue);
+                          setDeskAcademicYear(currentAcademicYear);
+                          setDeskCirculation(currentCirculation);
+                          setDeskIssn(currentIssn);
+                          setDeskMotto(currentMotto);
+                          setDeskTaglineDescription(currentTaglineDescription);
+                          setDeskIssnAutoNotice(false);
+                          setIsEditEditionModalOpen(true);
+                        }}
+                        className="px-3 py-1.5 text-xs font-bold text-[#F3C562] bg-[#4A0E17] hover:bg-[#5C1521] border border-[#681622] rounded-md transition-colors flex items-center gap-1.5 shadow-xs shrink-0 cursor-pointer"
+                      >
+                        <Edit3 className="w-3.5 h-3.5 text-[#D4AF37]" />
+                        <span>Edit Circulation & ISSN</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDeskMotto(currentMotto);
+                          setDeskTaglineDescription(currentTaglineDescription);
+                          setIsEditMottoModalOpen(true);
+                        }}
+                        className="px-3 py-1.5 text-xs font-bold text-[#F3C562] bg-[#4A0E17] hover:bg-[#5C1521] border border-[#681622] rounded-md transition-colors flex items-center gap-1.5 shadow-xs shrink-0 cursor-pointer"
+                      >
+                        <Edit3 className="w-3.5 h-3.5 text-[#D4AF37]" />
+                        <span>Edit Motto & Tagline</span>
+                      </button>
+                    </div>
                   </div>
 
                   {/* Add Announcement Form */}
@@ -3112,17 +3312,189 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                       </p>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDeskVolumeIssue(currentVolumeIssue);
+                          setDeskAcademicYear(currentAcademicYear);
+                          setDeskCirculation(currentCirculation);
+                          setDeskIssn(currentIssn);
+                          setDeskMotto(currentMotto);
+                          setDeskTaglineDescription(currentTaglineDescription);
+                          setDeskIssnAutoNotice(false);
+                          setIsEditEditionModalOpen(true);
+                        }}
+                        className="px-4 py-2 text-xs font-bold text-[#2A050B] bg-[#D4AF37] hover:bg-[#F3C562] rounded-md transition-colors flex items-center gap-2 shadow-xs shrink-0 cursor-pointer"
+                      >
+                        <Edit3 className="w-4 h-4 text-[#4A0E17]" />
+                        <span>Edit Issue & S.Y.</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDeskVolumeIssue(currentVolumeIssue);
+                          setDeskAcademicYear(currentAcademicYear);
+                          setDeskCirculation(currentCirculation);
+                          setDeskIssn(currentIssn);
+                          setDeskMotto(currentMotto);
+                          setDeskTaglineDescription(currentTaglineDescription);
+                          setDeskIssnAutoNotice(false);
+                          setIsEditEditionModalOpen(true);
+                        }}
+                        className="px-4 py-2 text-xs font-bold text-[#F3C562] bg-[#4A0E17] hover:bg-[#5C1521] border border-[#D4AF37]/50 rounded-md transition-colors flex items-center gap-2 shadow-xs shrink-0 cursor-pointer"
+                      >
+                        <Edit3 className="w-4 h-4 text-[#D4AF37]" />
+                        <span>Edit Circulation & ISSN</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDeskMotto(currentMotto);
+                          setDeskTaglineDescription(currentTaglineDescription);
+                          setIsEditMottoModalOpen(true);
+                        }}
+                        className="px-4 py-2 text-xs font-bold text-[#F3C562] bg-[#4A0E17] hover:bg-[#5C1521] border border-[#D4AF37]/50 rounded-md transition-colors flex items-center gap-2 shadow-xs shrink-0 cursor-pointer"
+                      >
+                        <Edit3 className="w-4 h-4 text-[#D4AF37]" />
+                        <span>Edit Motto & Tagline</span>
+                      </button>
+
                       <button
                         type="button"
                         onClick={handleOpenAddCategory}
-                        className="px-4 py-2 text-xs font-bold text-white bg-[#0B2545] hover:bg-[#133E87] rounded-md transition-colors flex items-center gap-2 shadow-xs shrink-0"
+                        className="px-4 py-2 text-xs font-bold text-white bg-[#4A0E17] hover:bg-[#5C1521] rounded-md transition-colors flex items-center gap-2 shadow-xs shrink-0 cursor-pointer"
                       >
                         <PlusCircle className="w-4 h-4 text-[#D4AF37]" />
                         <span>Add New Category</span>
                       </button>
                     </div>
                   </div>
+
+                  {/* Official Publication Volume, Issue, Academic Year, Circulation, ISSN, Motto & Tagline Quick-Edit Card */}
+                  <form
+                    onSubmit={handleSaveEditionFromDesk}
+                    className="bg-[#4A0E17] text-white border border-[#681622] rounded-lg p-4 shadow-sm space-y-3"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <div className="text-[10px] font-bold uppercase tracking-widest text-[#F3C562]">
+                          Official Masthead Dateline, Motto, Tagline, Circulation & ISSN Configuration
+                        </div>
+                        <h4 className="font-serif text-base font-bold text-white">
+                          Issue & S.Y., Motto (“Ideas in ink...”), Tagline, Circulation & Auto-ISSN
+                        </h4>
+                        <p className="text-xs text-stone-300">
+                          {currentVolumeIssue} · {currentAcademicYear} · {currentCirculation} · {currentIssn}
+                        </p>
+                      </div>
+                      <button
+                        type="submit"
+                        className="px-4 py-2 text-xs font-bold text-[#2A050B] bg-[#D4AF37] hover:bg-[#F3C562] rounded transition-colors flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5 text-[#4A0E17]" />
+                        <span>Save Masthead Settings</span>
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-[#F3C562] mb-1">
+                          Volume & Issue No. (Auto-ISSN)
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={deskVolumeIssue}
+                          onChange={(e) => handleDeskVolumeIssueChange(e.target.value)}
+                          placeholder="Vol. XXIV · Issue No. 1"
+                          className="w-full px-3 py-1.5 text-xs font-semibold rounded bg-[#34070E] border border-[#681622] text-white focus:outline-none focus:ring-1 focus:ring-[#D4AF37]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-semibold text-[#F3C562] mb-1">
+                          School Year / Academic Year (S.Y.)
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={deskAcademicYear}
+                          onChange={(e) => setDeskAcademicYear(e.target.value)}
+                          placeholder="Academic Year 2026–2027"
+                          className="w-full px-3 py-1.5 text-xs font-semibold rounded bg-[#34070E] border border-[#681622] text-white focus:outline-none focus:ring-1 focus:ring-[#D4AF37]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-semibold text-[#F3C562] mb-1">
+                          Circulation Statement
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={deskCirculation}
+                          onChange={(e) => setDeskCirculation(e.target.value)}
+                          placeholder="Circulation: 2,800+ Students & Faculty"
+                          className="w-full px-3 py-1.5 text-xs font-semibold rounded bg-[#34070E] border border-[#681622] text-white focus:outline-none focus:ring-1 focus:ring-[#D4AF37]"
+                        />
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-[11px] font-semibold text-[#F3C562]">
+                            Electronic ISSN
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => setDeskIssn(generateRandomElectronicIssn())}
+                            className="text-[10px] font-bold text-[#D4AF37] hover:underline cursor-pointer"
+                          >
+                            Generate New
+                          </button>
+                        </div>
+                        <input
+                          type="text"
+                          required
+                          value={deskIssn}
+                          onChange={(e) => setDeskIssn(e.target.value)}
+                          placeholder="ISSN 2984-7125 (Electronic)"
+                          className="w-full px-3 py-1.5 text-xs font-mono font-semibold rounded bg-[#34070E] border border-[#681622] text-white focus:outline-none focus:ring-1 focus:ring-[#D4AF37]"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 pt-1 border-t border-[#681622]/60">
+                      <div className="lg:col-span-4">
+                        <label className="block text-[11px] font-semibold text-[#F3C562] mb-1">
+                          Publication Motto (“Ideas in ink. Voices in motion.”)
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={deskMotto}
+                          onChange={(e) => setDeskMotto(e.target.value)}
+                          placeholder="“Ideas in ink. Voices in motion.”"
+                          className="w-full px-3 py-1.5 text-xs font-serif italic font-semibold rounded bg-[#34070E] border border-[#681622] text-white focus:outline-none focus:ring-1 focus:ring-[#D4AF37]"
+                        />
+                      </div>
+                      <div className="lg:col-span-8">
+                        <label className="block text-[11px] font-semibold text-[#F3C562] mb-1">
+                          Masthead Subtitle & Tagline Description
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={deskTaglineDescription}
+                          onChange={(e) => setDeskTaglineDescription(e.target.value)}
+                          placeholder="Campus news, student perspectives, inspiring features, sports highlights, and school announcements—all in one place."
+                          className="w-full px-3 py-1.5 text-xs font-medium rounded bg-[#34070E] border border-[#681622] text-white focus:outline-none focus:ring-1 focus:ring-[#D4AF37]"
+                        />
+                      </div>
+                    </div>
+                  </form>
 
                   {/* Summary Bar */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -5209,6 +5581,337 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                 </div>
               )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Edit Publication Volume, Issue No. & Academic Year Modal inside Editorial Desk */}
+        {isEditEditionModalOpen && (
+          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-stone-950/80 backdrop-blur-xs">
+            <div className="bg-white text-[#1C1917] w-full max-w-lg rounded-lg shadow-2xl border border-[#681622] overflow-hidden">
+              <div className="bg-[#4A0E17] text-white px-5 py-4 border-b border-[#34070E] flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <InkspirerLogo size="sm" />
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-[#F3C562]">
+                      The Inkspirer · Publication Dateline, Circulation & ISSN Menu
+                    </div>
+                    <h3 className="font-serif text-lg font-bold text-white">
+                      Edit Issue & S.Y. · Edit Circulation & ISSN
+                    </h3>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsEditEditionModalOpen(false)}
+                  className="p-1.5 rounded text-stone-300 hover:text-white hover:bg-[#5C1521] transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveEditionFromDesk} className="p-5 space-y-4 max-h-[82vh] overflow-y-auto">
+                <div>
+                  <label className="block text-xs font-bold text-stone-800 mb-1">
+                    Volume & Issue Number (Auto-Generates New ISSN on Change)
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={deskVolumeIssue}
+                    onChange={(e) => handleDeskVolumeIssueChange(e.target.value)}
+                    placeholder="e.g. Vol. XXIV · Issue No. 1"
+                    className="w-full px-3 py-2 text-xs font-semibold border border-stone-300 rounded focus:ring-2 focus:ring-[#4A0E17] focus:border-[#4A0E17] focus:outline-none text-stone-900"
+                  />
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {[
+                      'Vol. XXIV · Issue No. 1',
+                      'Vol. XXIV · Issue No. 2',
+                      'Vol. XXIV · Special RSPC Edition',
+                      'Vol. XXV · Issue No. 1',
+                    ].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => handleDeskVolumeIssueChange(preset)}
+                        className={`px-2 py-1 text-[11px] rounded border transition-colors cursor-pointer ${
+                          deskVolumeIssue === preset
+                            ? 'bg-[#4A0E17] text-[#F3C562] border-[#4A0E17] font-bold'
+                            : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'
+                        }`}
+                      >
+                        {preset}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-stone-800 mb-1">
+                    School Year / Academic Year (S.Y.)
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={deskAcademicYear}
+                    onChange={(e) => setDeskAcademicYear(e.target.value)}
+                    placeholder="e.g. S.Y. 2026–2027 or Academic Year 2026–2027"
+                    className="w-full px-3 py-2 text-xs font-semibold border border-stone-300 rounded focus:ring-2 focus:ring-[#4A0E17] focus:border-[#4A0E17] focus:outline-none text-stone-900"
+                  />
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {[
+                      'S.Y. 2026–2027',
+                      'Academic Year 2026–2027',
+                      'S.Y. 2027–2028',
+                      'Academic Year 2027–2028',
+                    ].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setDeskAcademicYear(preset)}
+                        className={`px-2 py-1 text-[11px] rounded border transition-colors cursor-pointer ${
+                          deskAcademicYear === preset
+                            ? 'bg-[#4A0E17] text-[#F3C562] border-[#4A0E17] font-bold'
+                            : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'
+                        }`}
+                      >
+                        {preset}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-stone-800 mb-1">
+                    Circulation Statement
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={deskCirculation}
+                    onChange={(e) => setDeskCirculation(e.target.value)}
+                    placeholder="Circulation: 2,800+ Students & Faculty"
+                    className="w-full px-3 py-2 text-xs font-semibold border border-stone-300 rounded focus:ring-2 focus:ring-[#4A0E17] focus:border-[#4A0E17] focus:outline-none text-stone-900"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-stone-800">
+                      Electronic ISSN (Auto-Generated per Volume & Issue)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDeskIssn(generateRandomElectronicIssn());
+                        setDeskIssnAutoNotice(true);
+                      }}
+                      className="text-[11px] font-bold text-[#4A0E17] hover:underline cursor-pointer"
+                    >
+                      Generate New ISSN
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    required
+                    value={deskIssn}
+                    onChange={(e) => {
+                      setDeskIssn(e.target.value);
+                      setDeskIssnAutoNotice(false);
+                    }}
+                    placeholder="ISSN 2984-7125 (Electronic)"
+                    className="w-full px-3 py-2 text-xs font-mono font-semibold border border-stone-300 rounded focus:ring-2 focus:ring-[#4A0E17] focus:border-[#4A0E17] focus:outline-none text-stone-900"
+                  />
+                  {deskIssnAutoNotice && (
+                    <div className="mt-1 text-[11px] text-emerald-700 font-semibold">
+                      Auto-generated ISSN <strong>{deskIssn}</strong> for <strong>{deskVolumeIssue}</strong>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-stone-800 mb-1">
+                    Publication Motto (“Ideas in ink. Voices in motion.”)
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={deskMotto}
+                    onChange={(e) => setDeskMotto(e.target.value)}
+                    placeholder="“Ideas in ink. Voices in motion.”"
+                    className="w-full px-3 py-2 text-xs font-serif italic font-semibold border border-stone-300 rounded focus:ring-2 focus:ring-[#4A0E17] focus:border-[#4A0E17] focus:outline-none text-stone-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-stone-800 mb-1">
+                    Masthead Subtitle & Tagline Description
+                  </label>
+                  <textarea
+                    rows={2}
+                    required
+                    value={deskTaglineDescription}
+                    onChange={(e) => setDeskTaglineDescription(e.target.value)}
+                    placeholder="Campus news, student perspectives, inspiring features, sports highlights, and school announcements—all in one place."
+                    className="w-full px-3 py-2 text-xs font-medium border border-stone-300 rounded focus:ring-2 focus:ring-[#4A0E17] focus:border-[#4A0E17] focus:outline-none text-stone-900"
+                  />
+                </div>
+
+                <label className="flex items-center gap-2 text-xs text-stone-700 cursor-pointer pt-1">
+                  <input
+                    type="checkbox"
+                    checked={deskSyncLeadIssue}
+                    onChange={(e) => setDeskSyncLeadIssue(e.target.checked)}
+                    className="rounded border-stone-300 text-[#4A0E17] focus:ring-[#4A0E17]"
+                  />
+                  <span>Also update the front-page Lead Story issue badge to match</span>
+                </label>
+
+                <div className="pt-3 border-t border-stone-200 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditEditionModalOpen(false)}
+                    className="px-4 py-2 text-xs font-semibold text-stone-600 hover:text-stone-900 hover:bg-stone-100 rounded transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 text-xs font-bold text-[#2A050B] bg-[#D4AF37] hover:bg-[#F3C562] rounded transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-4 h-4 text-[#4A0E17]" />
+                    <span>Save Publication Settings</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Dedicated Edit Motto & Tagline Description Modal inside Editorial Desk */}
+        {isEditMottoModalOpen && (
+          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-stone-950/80 backdrop-blur-xs">
+            <div className="bg-white text-[#1C1917] w-full max-w-lg rounded-lg shadow-2xl border border-[#681622] overflow-hidden">
+              <div className="bg-[#4A0E17] text-white px-5 py-4 border-b border-[#34070E] flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <InkspirerLogo size="sm" />
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-[#F3C562]">
+                      The Inkspirer · Masthead Motto & Tagline Menu
+                    </div>
+                    <h3 className="font-serif text-lg font-bold text-white">
+                      Edit Motto & Masthead Description
+                    </h3>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsEditMottoModalOpen(false)}
+                  className="p-1.5 rounded text-stone-300 hover:text-white hover:bg-[#5C1521] transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveMottoFromDesk} className="p-5 space-y-4 max-h-[82vh] overflow-y-auto">
+                <div>
+                  <label className="block text-xs font-bold text-stone-800 mb-1">
+                    Publication Motto (Displayed under THE OFFICIAL DIGITAL NEWSLETTER PORTAL)
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={deskMotto}
+                    onChange={(e) => setDeskMotto(e.target.value)}
+                    placeholder="“Ideas in ink. Voices in motion.”"
+                    className="w-full px-3 py-2 text-sm font-serif italic font-semibold border border-stone-300 rounded focus:ring-2 focus:ring-[#4A0E17] focus:border-[#4A0E17] focus:outline-none text-stone-900"
+                  />
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {[
+                      '“Ideas in ink. Voices in motion.”',
+                      '“Truth in every line. Courage in every voice.”',
+                      '“Empowering Barobo youth through fearless campus journalism.”',
+                    ].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setDeskMotto(preset)}
+                        className={`px-2 py-1 text-[11px] rounded border transition-colors cursor-pointer ${
+                          deskMotto === preset
+                            ? 'bg-[#4A0E17] text-[#F3C562] border-[#4A0E17] font-bold'
+                            : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'
+                        }`}
+                      >
+                        {preset}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-stone-800 mb-1">
+                    Masthead Subtitle & Description
+                  </label>
+                  <textarea
+                    rows={3}
+                    required
+                    value={deskTaglineDescription}
+                    onChange={(e) => setDeskTaglineDescription(e.target.value)}
+                    placeholder="Campus news, student perspectives, inspiring features, sports highlights, and school announcements—all in one place."
+                    className="w-full px-3 py-2 text-xs font-medium border border-stone-300 rounded focus:ring-2 focus:ring-[#4A0E17] focus:border-[#4A0E17] focus:outline-none text-stone-900 leading-relaxed"
+                  />
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {[
+                      'Campus news, student perspectives, inspiring features, sports highlights, and school announcements—all in one place.',
+                      'Official student journalism, investigative reports, literary features, sports coverage, and campus advisories of Barobo National High School.',
+                    ].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setDeskTaglineDescription(preset)}
+                        className={`px-2 py-1 text-[11px] rounded border text-left transition-colors cursor-pointer ${
+                          deskTaglineDescription === preset
+                            ? 'bg-[#4A0E17] text-[#F3C562] border-[#4A0E17] font-bold'
+                            : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'
+                        }`}
+                      >
+                        {preset}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Live Preview */}
+                <div className="rounded-lg bg-[#4A0E17] text-white p-4 text-center space-y-1.5 border border-[#681622]">
+                  <div className="text-[10px] font-semibold tracking-[0.2em] uppercase text-[#D4AF37]">
+                    THE OFFICIAL DIGITAL NEWSLETTER PORTAL
+                  </div>
+                  <div className="font-serif italic text-base text-stone-100">
+                    {deskMotto || '“Ideas in ink. Voices in motion.”'}
+                  </div>
+                  <div className="text-xs text-stone-200 leading-relaxed pt-1">
+                    {deskTaglineDescription ||
+                      'Campus news, student perspectives, inspiring features, sports highlights, and school announcements—all in one place.'}
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-stone-200 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditMottoModalOpen(false)}
+                    className="px-4 py-2 text-xs font-semibold text-stone-600 hover:text-stone-900 hover:bg-stone-100 rounded transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 text-xs font-bold text-[#2A050B] bg-[#D4AF37] hover:bg-[#F3C562] rounded transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-4 h-4 text-[#4A0E17]" />
+                    <span>Save Motto & Description</span>
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}

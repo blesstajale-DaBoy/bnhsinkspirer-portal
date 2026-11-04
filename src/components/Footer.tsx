@@ -1,5 +1,5 @@
 import React from 'react';
-import { Category, PublicationCategory } from '../types';
+import { Category, PublicationCategory, PublicationEditionConfig } from '../types';
 import { Feather, Download, Printer, Shield, BookOpen } from 'lucide-react';
 import { NewsletterSignup } from './NewsletterSignup';
 import { InkspirerLogo } from './InkspirerLogo';
@@ -10,6 +10,7 @@ interface FooterProps {
   onOpenDownloadPortal: () => void;
   onOpenEditorialDesk: () => void;
   categories?: PublicationCategory[];
+  editionConfig?: PublicationEditionConfig;
 }
 
 export const Footer: React.FC<FooterProps> = ({
@@ -18,7 +19,10 @@ export const Footer: React.FC<FooterProps> = ({
   onOpenDownloadPortal,
   onOpenEditorialDesk,
   categories,
+  editionConfig,
 }) => {
+  const currentMotto = editionConfig?.motto || '“Ideas in ink. Voices in motion.”';
+
   return (
     <footer className="bg-[#240408] text-stone-300 border-t border-[#450C13]">
       {/* Interactive Digital Email Newsletter Signup Component */}
@@ -44,7 +48,7 @@ export const Footer: React.FC<FooterProps> = ({
               BAROBO NATIONAL HIGH SCHOOL
             </div>
             <p className="font-serif italic text-sm text-stone-300 leading-relaxed max-w-sm">
-              “Ideas in ink. Voices in motion.”
+              {currentMotto}
             </p>
             <p className="text-xs text-stone-400 leading-relaxed max-w-sm pt-1">
               The official digital newsletter and student publication of Barobo National High School. Fostering truthful, courageous, and community-centered campus journalism across Surigao del Sur.
