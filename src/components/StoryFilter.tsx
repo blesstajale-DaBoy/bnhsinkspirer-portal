@@ -1,6 +1,7 @@
 import React from 'react';
 import { Search, X, SlidersHorizontal, Check, PlusCircle } from 'lucide-react';
 import { Category, PublicationCategory } from '../types';
+import { InkspirerLogo } from './InkspirerLogo';
 
 interface StoryFilterProps {
   activeCategory: Category | 'All';
@@ -171,10 +172,10 @@ export const StoryFilter: React.FC<StoryFilterProps> = ({
               <button
                 type="button"
                 onClick={onOpenEditorialDesk}
-                className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded bg-[#4A0E17] text-[#F3C562] border border-[#6B1420] hover:bg-[#5C1521] transition-colors shadow-2xs"
+                className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded bg-[#4A0E17] text-[#F3C562] border border-[#6B1420] hover:bg-[#5C1521] transition-colors shadow-2xs cursor-pointer"
                 title="Create, edit, delete, and upload photos for stories and publication categories"
               >
-                <PlusCircle className="w-3.5 h-3.5 text-[#D4AF37]" />
+                <InkspirerLogo size="sm" className="w-4! h-4!" showBorder={false} />
                 <span>Editorial & Category Desk</span>
               </button>
             )}

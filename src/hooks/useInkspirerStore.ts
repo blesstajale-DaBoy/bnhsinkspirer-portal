@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Article,
   Announcement,
@@ -37,24 +37,76 @@ const STORAGE_KEYS = {
   AUTHOR_PROFILES: 'the_inkspirer_author_profiles_v1',
 };
 
-function stripUndefined<T extends Record<string, any>>(obj: T): T {
-  const cleaned: Record<string, any> = {};
-  Object.keys(obj).forEach((key) => {
-    const val = obj[key];
-    if (val !== undefined) {
-      if (val && typeof val === 'object' && !Array.isArray(val)) {
-        cleaned[key] = stripUndefined(val);
-      } else {
-        cleaned[key] = val;
+function stripUndefined<T>(obj: T): T {
+  if (Array.isArray(obj)) {
+    return obj
+      .filter((item) => item !== undefined)
+      .map((item) => (item && typeof item === 'object' ? stripUndefined(item) : item)) as unknown as T;
+  }
+  if (obj && typeof obj === 'object') {
+    const cleaned: Record<string, any> = {};
+    Object.keys(obj as Record<string, any>).forEach((key) => {
+      const val = (obj as Record<string, any>)[key];
+      if (val !== undefined) {
+        cleaned[key] = val && typeof val === 'object' ? stripUndefined(val) : val;
       }
+    });
+    return cleaned as T;
+  }
+  return obj;
+}
+
+function safeLocalStorageSet(key: string, value: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (err) {
+    console.warn(`localStorage write warning for ${key}:`, err);
+  }
+}
+
+function getArticleTimestamp(id: string): number {
+  const match = id.match(/^art-(\d{10,})$/);
+  return match ? parseInt(match[1], 10) : 0;
+}
+
+function sortArticlesNewestFirst(list: Article[]): Article[] {
+  return [...list].sort((a, b) => {
+    const timeA = getArticleTimestamp(a.id);
+    const timeB = getArticleTimestamp(b.id);
+    if (timeA !== timeB) {
+      return timeB - timeA;
     }
+    return 0;
   });
-  return cleaned as T;
+}
+
+function prepareFirestorePayload(data: Record<string, any>): Record<string, any> {
+  const cleaned = stripUndefined(data);
+  // Firestore documents have a strict 1 MiB limit; if a base64 image is still > 750KB, omit the raw base64 only in the cloud copy while keeping it in state/localStorage
+  try {
+    const serialized = JSON.stringify(cleaned);
+    if (serialized.length > 850000) {
+      const fallback = { ...cleaned };
+      if (typeof fallback.imageUrl === 'string' && fallback.imageUrl.startsWith('data:')) {
+        delete fallback.imageUrl;
+      }
+      if (typeof fallback.photoUrl === 'string' && fallback.photoUrl.startsWith('data:')) {
+        delete fallback.photoUrl;
+      }
+      if (typeof fallback.authorPhotoUrl === 'string' && fallback.authorPhotoUrl.startsWith('data:')) {
+        delete fallback.authorPhotoUrl;
+      }
+      return fallback;
+    }
+  } catch {
+    // ignore
+  }
+  return cleaned;
 }
 
 function safeSetDoc(collectionName: string, docId: string, data: Record<string, any>) {
   try {
-    const cleanedData = stripUndefined(data);
+    const cleanedData = prepareFirestorePayload(data);
     setDoc(doc(db, collectionName, docId), cleanedData).catch((err) => {
       console.warn(`Firestore ${collectionName}/${docId} sync warning:`, err);
     });
@@ -104,14 +156,19 @@ export function useInkspirerStore() {
       const stored = localStorage.getItem(STORAGE_KEYS.ARTICLES);
       if (!stored) return INITIAL_ARTICLES;
       const parsed: Article[] = JSON.parse(stored);
-      return parsed.map((item) => {
-        const initialMatch = INITIAL_ARTICLES.find((a) => a.id === item.id);
-        return {
-          ...item,
-          authorBio: item.authorBio || initialMatch?.authorBio || `Contributing campus writer at Barobo National High School's The Inkspirer.`,
-          authorAvatar: item.authorAvatar || initialMatch?.authorAvatar || 'default',
-        };
-      });
+      return sortArticlesNewestFirst(
+        parsed.map((item) => {
+          const initialMatch = INITIAL_ARTICLES.find((a) => a.id === item.id);
+          return {
+            ...item,
+            authorBio:
+              item.authorBio ||
+              initialMatch?.authorBio ||
+              `Contributing campus writer at Barobo National High School's The Inkspirer.`,
+            authorAvatar: item.authorAvatar || initialMatch?.authorAvatar || 'default',
+          };
+        })
+      );
     } catch {
       return INITIAL_ARTICLES;
     }
@@ -195,6 +252,8 @@ export function useInkspirerStore() {
     }
   });
 
+  const deletedIdsRef = useRef<Set<string>>(new Set());
+
   // Real-time Firestore sync & Auto-seeding
   useEffect(() => {
     // 1. Articles Firestore listener
@@ -203,8 +262,29 @@ export function useInkspirerStore() {
       (snap) => {
         if (!snap.empty) {
           const cloudArts = snap.docs.map((d) => d.data() as Article);
-          setArticles(cloudArts);
-          localStorage.setItem(STORAGE_KEYS.ARTICLES, JSON.stringify(cloudArts));
+          setArticles((prev) => {
+            const cloudIds = new Set(cloudArts.map((a) => a.id));
+            // Preserve local imageUrl if cloud copy stripped a large data URI
+            const mergedFromCloud = cloudArts
+              .filter((a) => !deletedIdsRef.current.has(a.id))
+              .map((cloudArt) => {
+                const localMatch = prev.find((p) => p.id === cloudArt.id);
+                if (!cloudArt.imageUrl && localMatch?.imageUrl) {
+                  return { ...cloudArt, imageUrl: localMatch.imageUrl };
+                }
+                return cloudArt;
+              });
+            // Keep any locally published articles not yet in Firestore and sync them up
+            const localOnly = prev.filter(
+              (p) => !cloudIds.has(p.id) && !deletedIdsRef.current.has(p.id)
+            );
+            localOnly.forEach((locArt) => {
+              safeSetDoc('articles', locArt.id, locArt);
+            });
+            const sorted = sortArticlesNewestFirst([...localOnly, ...mergedFromCloud]);
+            safeLocalStorageSet(STORAGE_KEYS.ARTICLES, sorted);
+            return sorted;
+          });
         } else {
           // Seed initial articles
           INITIAL_ARTICLES.forEach((art) => {
@@ -223,8 +303,21 @@ export function useInkspirerStore() {
       (snap) => {
         if (!snap.empty) {
           const cloudAnn = snap.docs.map((d) => d.data() as Announcement);
-          setAnnouncements(cloudAnn);
-          localStorage.setItem(STORAGE_KEYS.ANNOUNCEMENTS, JSON.stringify(cloudAnn));
+          setAnnouncements((prev) => {
+            const cloudIds = new Set(cloudAnn.map((a) => a.id));
+            const localOnly = prev.filter(
+              (p) => !cloudIds.has(p.id) && !deletedIdsRef.current.has(p.id)
+            );
+            localOnly.forEach((locAnn) => {
+              safeSetDoc('announcements', locAnn.id, locAnn);
+            });
+            const merged = [
+              ...localOnly,
+              ...cloudAnn.filter((a) => !deletedIdsRef.current.has(a.id)),
+            ];
+            safeLocalStorageSet(STORAGE_KEYS.ANNOUNCEMENTS, merged);
+            return merged;
+          });
         } else {
           INITIAL_ANNOUNCEMENTS.forEach((ann) => {
             safeSetDoc('announcements', ann.id, ann);
@@ -256,7 +349,7 @@ export function useInkspirerStore() {
             }
           });
           setCategories(mergedCats);
-          localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(mergedCats));
+          safeLocalStorageSet(STORAGE_KEYS.CATEGORIES, mergedCats);
         } else {
           INITIAL_CATEGORIES.forEach((cat) => {
             safeSetDoc('categories', cat.id, cat);
@@ -274,11 +367,21 @@ export function useInkspirerStore() {
       (snap) => {
         if (!snap.empty) {
           const cloudSubs = snap.docs.map((d) => d.data() as StorySubmission);
-          setSubmissions(cloudSubs);
-          localStorage.setItem(STORAGE_KEYS.SUBMISSIONS, JSON.stringify(cloudSubs));
+          setSubmissions((prev) => {
+            const cloudIds = new Set(cloudSubs.map((s) => s.id));
+            const localOnly = prev.filter(
+              (p) => !cloudIds.has(p.id) && !deletedIdsRef.current.has(p.id)
+            );
+            localOnly.forEach((locSub) => {
+              safeSetDoc('submissions', locSub.id, locSub);
+            });
+            const merged = [...localOnly, ...cloudSubs];
+            safeLocalStorageSet(STORAGE_KEYS.SUBMISSIONS, merged);
+            return merged;
+          });
         } else {
           INITIAL_SUBMISSIONS.forEach((sub) => {
-            setDoc(doc(db, 'submissions', sub.id), sub).catch(() => {});
+            safeSetDoc('submissions', sub.id, sub);
           });
         }
       },
@@ -293,11 +396,24 @@ export function useInkspirerStore() {
       (snap) => {
         if (!snap.empty) {
           const cloudStaff = snap.docs.map((d) => d.data() as EditorialMember);
-          setStaff(cloudStaff);
-          localStorage.setItem(STORAGE_KEYS.STAFF, JSON.stringify(cloudStaff));
+          setStaff((prev) => {
+            const cloudIds = new Set(cloudStaff.map((m) => m.id));
+            const localOnly = prev.filter(
+              (p) => !cloudIds.has(p.id) && !deletedIdsRef.current.has(p.id)
+            );
+            localOnly.forEach((locMem) => {
+              safeSetDoc('editorialStaff', locMem.id, locMem);
+            });
+            const merged = [
+              ...cloudStaff.filter((m) => !deletedIdsRef.current.has(m.id)),
+              ...localOnly,
+            ];
+            safeLocalStorageSet(STORAGE_KEYS.STAFF, merged);
+            return merged;
+          });
         } else {
           INITIAL_EDITORIAL_STAFF.forEach((member) => {
-            setDoc(doc(db, 'editorialStaff', member.id), member).catch(() => {});
+            safeSetDoc('editorialStaff', member.id, member);
           });
         }
       },
@@ -312,8 +428,21 @@ export function useInkspirerStore() {
       (snap) => {
         if (!snap.empty) {
           const cloudProfiles = snap.docs.map((d) => d.data() as StudentAuthorProfile);
-          setAuthorProfiles(cloudProfiles);
-          localStorage.setItem(STORAGE_KEYS.AUTHOR_PROFILES, JSON.stringify(cloudProfiles));
+          setAuthorProfiles((prev) => {
+            const cloudIds = new Set(cloudProfiles.map((p) => p.id));
+            const localOnly = prev.filter(
+              (p) => !cloudIds.has(p.id) && !deletedIdsRef.current.has(p.id)
+            );
+            localOnly.forEach((locProf) => {
+              safeSetDoc('authorProfiles', locProf.id, locProf);
+            });
+            const merged = [
+              ...localOnly,
+              ...cloudProfiles.filter((p) => !deletedIdsRef.current.has(p.id)),
+            ];
+            safeLocalStorageSet(STORAGE_KEYS.AUTHOR_PROFILES, merged);
+            return merged;
+          });
         } else {
           INITIAL_AUTHOR_PROFILES.forEach((prof) => {
             safeSetDoc('authorProfiles', prof.id, prof);
@@ -337,27 +466,15 @@ export function useInkspirerStore() {
 
   // Save local preferences
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.BOOKMARKS, JSON.stringify(bookmarks));
-    } catch (e) {
-      console.warn(e);
-    }
+    safeLocalStorageSet(STORAGE_KEYS.BOOKMARKS, bookmarks);
   }, [bookmarks]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.LIKED, JSON.stringify(likedArticles));
-    } catch (e) {
-      console.warn(e);
-    }
+    safeLocalStorageSet(STORAGE_KEYS.LIKED, likedArticles);
   }, [likedArticles]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.READING_PROGRESS, JSON.stringify(readingProgressMap));
-    } catch (e) {
-      console.warn(e);
-    }
+    safeLocalStorageSet(STORAGE_KEYS.READING_PROGRESS, readingProgressMap);
   }, [readingProgressMap]);
 
   // Bookmarking
@@ -400,40 +517,44 @@ export function useInkspirerStore() {
     setLikedArticles((prev) =>
       isLiked ? prev.filter((item) => item !== id) : [...prev, id]
     );
-    setArticles((prev) =>
-      prev.map((art) => {
+    setArticles((prev) => {
+      const next = prev.map((art) => {
         if (art.id === id) {
-          const updatedArt = {
+          const updatedArt = stripUndefined({
             ...art,
             likes: isLiked ? Math.max(0, art.likes - 1) : art.likes + 1,
-          };
-          setDoc(doc(db, 'articles', id), updatedArt).catch(() => {});
+          });
+          safeSetDoc('articles', id, updatedArt);
           return updatedArt;
         }
         return art;
-      })
-    );
+      });
+      safeLocalStorageSet(STORAGE_KEYS.ARTICLES, next);
+      return next;
+    });
   };
 
   // Increment view
   const incrementView = (id: string) => {
-    setArticles((prev) =>
-      prev.map((art) => {
+    setArticles((prev) => {
+      const next = prev.map((art) => {
         if (art.id === id) {
-          const updated = { ...art, views: art.views + 1 };
-          setDoc(doc(db, 'articles', id), updated).catch(() => {});
+          const updated = stripUndefined({ ...art, views: art.views + 1 });
+          safeSetDoc('articles', id, updated);
           return updated;
         }
         return art;
-      })
-    );
+      });
+      safeLocalStorageSet(STORAGE_KEYS.ARTICLES, next);
+      return next;
+    });
   };
 
   // Student Submissions
   const addSubmission = (
     newSub: Omit<StorySubmission, 'id' | 'submittedAt' | 'status'>
   ): StorySubmission => {
-    const created: StorySubmission = {
+    const created: StorySubmission = stripUndefined({
       ...newSub,
       id: `sub-${Date.now()}`,
       submittedAt: new Date().toLocaleDateString('en-US', {
@@ -444,9 +565,13 @@ export function useInkspirerStore() {
         minute: '2-digit',
       }),
       status: 'pending',
-    };
-    setSubmissions((prev) => [created, ...prev]);
-    setDoc(doc(db, 'submissions', created.id), created).catch(() => {});
+    });
+    setSubmissions((prev) => {
+      const updated = [created, ...prev];
+      safeLocalStorageSet(STORAGE_KEYS.SUBMISSIONS, updated);
+      return updated;
+    });
+    safeSetDoc('submissions', created.id, created);
     return created;
   };
 
@@ -455,20 +580,26 @@ export function useInkspirerStore() {
     status: StorySubmission['status'],
     feedback?: string
   ) => {
-    setSubmissions((prev) =>
-      prev.map((sub) => {
+    setSubmissions((prev) => {
+      const updatedList = prev.map((sub) => {
         if (sub.id === id) {
-          const updated: StorySubmission = {
+          const updated: StorySubmission = stripUndefined({
             ...sub,
             status,
-            editorFeedback: feedback ?? sub.editorFeedback,
-          };
-          setDoc(doc(db, 'submissions', id), updated).catch(() => {});
+            ...(feedback !== undefined
+              ? { editorFeedback: feedback }
+              : sub.editorFeedback !== undefined
+                ? { editorFeedback: sub.editorFeedback }
+                : {}),
+          });
+          safeSetDoc('submissions', id, updated);
           return updated;
         }
         return sub;
-      })
-    );
+      });
+      safeLocalStorageSet(STORAGE_KEYS.SUBMISSIONS, updatedList);
+      return updatedList;
+    });
   };
 
   // Publication Adviser / Editor actions
@@ -486,7 +617,7 @@ export function useInkspirerStore() {
       .map((p) => p.trim())
       .filter(Boolean);
 
-    const newArticle: Article = {
+    const newArticle: Article = stripUndefined({
       id: `art-${Date.now()}`,
       title: sub.headline,
       deck: sub.summary,
@@ -504,15 +635,19 @@ export function useInkspirerStore() {
       featured: false,
       leadStory: false,
       content: paragraphs.length > 0 ? paragraphs : [sub.content],
-      pullQuote: paragraphs[0] ? `“${paragraphs[0].slice(0, 140)}...”` : undefined,
+      ...(paragraphs[0] ? { pullQuote: `“${paragraphs[0].slice(0, 140)}...”` } : {}),
       categoryTheme,
       views: 1,
       likes: 0,
       issue: 'Vol. XXIV · Issue 1',
-    };
+    });
 
-    setArticles((prev) => [newArticle, ...prev]);
-    setDoc(doc(db, 'articles', newArticle.id), newArticle).catch(() => {});
+    setArticles((prev) => {
+      const updated = [newArticle, ...prev];
+      safeLocalStorageSet(STORAGE_KEYS.ARTICLES, updated);
+      return updated;
+    });
+    safeSetDoc('articles', newArticle.id, newArticle);
 
     updateSubmissionStatus(
       submissionId,
@@ -535,20 +670,20 @@ export function useInkspirerStore() {
           newArt,
           ...prev.map((item) => {
             if (item.leadStory) {
-              const demoted = { ...item, leadStory: false };
+              const demoted = stripUndefined({ ...item, leadStory: false });
               safeSetDoc('articles', item.id, demoted);
               return demoted;
             }
             return item;
           }),
         ];
-        localStorage.setItem(STORAGE_KEYS.ARTICLES, JSON.stringify(updated));
+        safeLocalStorageSet(STORAGE_KEYS.ARTICLES, updated);
         return updated;
       });
     } else {
       setArticles((prev) => {
         const updated = [newArt, ...prev];
-        localStorage.setItem(STORAGE_KEYS.ARTICLES, JSON.stringify(updated));
+        safeLocalStorageSet(STORAGE_KEYS.ARTICLES, updated);
         return updated;
       });
     }
@@ -565,21 +700,22 @@ export function useInkspirerStore() {
           return cleanedUpdated;
         }
         if (cleanedUpdated.leadStory && item.leadStory && item.id !== cleanedUpdated.id) {
-          const demoted = { ...item, leadStory: false };
+          const demoted = stripUndefined({ ...item, leadStory: false });
           safeSetDoc('articles', item.id, demoted);
           return demoted;
         }
         return item;
       });
-      localStorage.setItem(STORAGE_KEYS.ARTICLES, JSON.stringify(nextList));
+      safeLocalStorageSet(STORAGE_KEYS.ARTICLES, nextList);
       return nextList;
     });
   };
 
   const deleteArticle = (id: string) => {
+    deletedIdsRef.current.add(id);
     setArticles((prev) => {
       const remaining = prev.filter((a) => a.id !== id);
-      localStorage.setItem(STORAGE_KEYS.ARTICLES, JSON.stringify(remaining));
+      safeLocalStorageSet(STORAGE_KEYS.ARTICLES, remaining);
       return remaining;
     });
     deleteDoc(doc(db, 'articles', id)).catch(() => {});
@@ -597,7 +733,7 @@ export function useInkspirerStore() {
     });
     setAnnouncements((prev) => {
       const updated = [newAnn, ...prev];
-      localStorage.setItem(STORAGE_KEYS.ANNOUNCEMENTS, JSON.stringify(updated));
+      safeLocalStorageSet(STORAGE_KEYS.ANNOUNCEMENTS, updated);
       return updated;
     });
     safeSetDoc('announcements', newAnn.id, newAnn);
@@ -628,15 +764,16 @@ export function useInkspirerStore() {
         safeSetDoc('announcements', id, merged);
         return merged;
       });
-      localStorage.setItem(STORAGE_KEYS.ANNOUNCEMENTS, JSON.stringify(updatedList));
+      safeLocalStorageSet(STORAGE_KEYS.ANNOUNCEMENTS, updatedList);
       return updatedList;
     });
   };
 
   const deleteAnnouncement = (id: string) => {
+    deletedIdsRef.current.add(id);
     setAnnouncements((prev) => {
       const remaining = prev.filter((a) => a.id !== id);
-      localStorage.setItem(STORAGE_KEYS.ANNOUNCEMENTS, JSON.stringify(remaining));
+      safeLocalStorageSet(STORAGE_KEYS.ANNOUNCEMENTS, remaining);
       return remaining;
     });
     deleteDoc(doc(db, 'announcements', id)).catch(() => {});
@@ -652,7 +789,7 @@ export function useInkspirerStore() {
         }
         return a;
       });
-      localStorage.setItem(STORAGE_KEYS.ANNOUNCEMENTS, JSON.stringify(updatedList));
+      safeLocalStorageSet(STORAGE_KEYS.ANNOUNCEMENTS, updatedList);
       return updatedList;
     });
   };
@@ -668,7 +805,7 @@ export function useInkspirerStore() {
     });
     setCategories((prev) => {
       const updated = [...prev, newCategory];
-      localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(updated));
+      safeLocalStorageSet(STORAGE_KEYS.CATEGORIES, updated);
       return updated;
     });
     safeSetDoc('categories', newCategory.id, newCategory);
@@ -689,17 +826,17 @@ export function useInkspirerStore() {
 
     setCategories((prev) => {
       const nextCats = prev.map((c) => (c.id === id ? merged : c));
-      localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(nextCats));
+      safeLocalStorageSet(STORAGE_KEYS.CATEGORIES, nextCats);
       return nextCats;
     });
     safeSetDoc('categories', id, merged);
 
     // If category name or colors changed, update existing articles in state and Firestore
     if (oldName !== newName || updated.color || updated.badgeBg || updated.badgeText) {
-      setArticles((prev) =>
-        prev.map((art) => {
+      setArticles((prev) => {
+        const nextArts = prev.map((art) => {
           if (art.category.toLowerCase() === oldName.toLowerCase()) {
-            const updArt: Article = {
+            const updArt: Article = stripUndefined({
               ...art,
               category: newName,
               categoryTheme: {
@@ -707,25 +844,29 @@ export function useInkspirerStore() {
                 badgeBg: updated.badgeBg || art.categoryTheme.badgeBg,
                 badgeText: updated.badgeText || art.categoryTheme.badgeText,
               },
-            };
-            setDoc(doc(db, 'articles', art.id), updArt).catch(() => {});
+            });
+            safeSetDoc('articles', art.id, updArt);
             return updArt;
           }
           return art;
-        })
-      );
+        });
+        safeLocalStorageSet(STORAGE_KEYS.ARTICLES, nextArts);
+        return nextArts;
+      });
 
       // Also cascade to submissions
-      setSubmissions((prev) =>
-        prev.map((sub) => {
+      setSubmissions((prev) => {
+        const nextSubs = prev.map((sub) => {
           if (sub.category.toLowerCase() === oldName.toLowerCase()) {
-            const updSub = { ...sub, category: newName };
-            setDoc(doc(db, 'submissions', sub.id), updSub).catch(() => {});
+            const updSub = stripUndefined({ ...sub, category: newName });
+            safeSetDoc('submissions', sub.id, updSub);
             return updSub;
           }
           return sub;
-        })
-      );
+        });
+        safeLocalStorageSet(STORAGE_KEYS.SUBMISSIONS, nextSubs);
+        return nextSubs;
+      });
     }
   };
 
@@ -737,44 +878,50 @@ export function useInkspirerStore() {
     const replacement = fallbackCategoryName || remaining[0]?.name || 'News';
 
     setCategories(remaining);
+    safeLocalStorageSet(STORAGE_KEYS.CATEGORIES, remaining);
     deleteDoc(doc(db, 'categories', id)).catch(() => {});
 
     // Reassign articles under deleted category to replacement
-    setArticles((prev) =>
-      prev.map((art) => {
+    setArticles((prev) => {
+      const nextArts = prev.map((art) => {
         if (art.category.toLowerCase() === target.name.toLowerCase()) {
           const repCat = remaining.find((c) => c.name.toLowerCase() === replacement.toLowerCase());
-          const updArt: Article = {
+          const updArt: Article = stripUndefined({
             ...art,
             category: replacement,
             categoryTheme: repCat
               ? { accentColor: repCat.color, badgeBg: repCat.badgeBg, badgeText: repCat.badgeText }
               : art.categoryTheme,
-          };
-          setDoc(doc(db, 'articles', art.id), updArt).catch(() => {});
+          });
+          safeSetDoc('articles', art.id, updArt);
           return updArt;
         }
         return art;
-      })
-    );
+      });
+      safeLocalStorageSet(STORAGE_KEYS.ARTICLES, nextArts);
+      return nextArts;
+    });
 
     // Reassign submissions
-    setSubmissions((prev) =>
-      prev.map((sub) => {
+    setSubmissions((prev) => {
+      const nextSubs = prev.map((sub) => {
         if (sub.category.toLowerCase() === target.name.toLowerCase()) {
-          const updSub = { ...sub, category: replacement };
-          setDoc(doc(db, 'submissions', sub.id), updSub).catch(() => {});
+          const updSub = stripUndefined({ ...sub, category: replacement });
+          safeSetDoc('submissions', sub.id, updSub);
           return updSub;
         }
         return sub;
-      })
-    );
+      });
+      safeLocalStorageSet(STORAGE_KEYS.SUBMISSIONS, nextSubs);
+      return nextSubs;
+    });
   };
 
   // Editorial Board & Masthead Roster CRUD
   const addStaffMember = (memberData: Omit<EditorialMember, 'id' | 'avatarSeed'>): EditorialMember => {
     const cleanName = memberData.name.trim();
-    const newMember: EditorialMember = {
+    const newMember: EditorialMember = stripUndefined({
+      ...memberData,
       id: `staff-${Date.now()}`,
       name: cleanName,
       role: memberData.role.trim(),
@@ -782,17 +929,15 @@ export function useInkspirerStore() {
       department: memberData.department.trim(),
       avatarSeed: cleanName.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'member',
       ...(memberData.photoUrl ? { photoUrl: memberData.photoUrl } : {}),
-    };
+    });
 
     setStaff((prev) => {
       const updated = [...prev, newMember];
-      localStorage.setItem(STORAGE_KEYS.STAFF, JSON.stringify(updated));
+      safeLocalStorageSet(STORAGE_KEYS.STAFF, updated);
       return updated;
     });
 
-    setDoc(doc(db, 'editorialStaff', newMember.id), newMember).catch((err) => {
-      console.warn('Firestore addStaffMember sync warning:', err);
-    });
+    safeSetDoc('editorialStaff', newMember.id, newMember);
 
     return newMember;
   };
@@ -801,7 +946,7 @@ export function useInkspirerStore() {
     setStaff((prev) => {
       const updatedList = prev.map((member) => {
         if (member.id !== id) return member;
-        const merged: EditorialMember = {
+        const mergedRaw: EditorialMember = {
           ...member,
           ...updatedFields,
           name: updatedFields.name !== undefined ? updatedFields.name.trim() : member.name,
@@ -813,23 +958,23 @@ export function useInkspirerStore() {
           department:
             updatedFields.department !== undefined ? updatedFields.department.trim() : member.department,
         };
-        if (!merged.photoUrl) {
-          delete merged.photoUrl;
+        if (!mergedRaw.photoUrl) {
+          delete mergedRaw.photoUrl;
         }
-        setDoc(doc(db, 'editorialStaff', id), merged).catch((err) => {
-          console.warn('Firestore updateStaffMember sync warning:', err);
-        });
+        const merged = stripUndefined(mergedRaw);
+        safeSetDoc('editorialStaff', id, merged);
         return merged;
       });
-      localStorage.setItem(STORAGE_KEYS.STAFF, JSON.stringify(updatedList));
+      safeLocalStorageSet(STORAGE_KEYS.STAFF, updatedList);
       return updatedList;
     });
   };
 
   const deleteStaffMember = (id: string) => {
+    deletedIdsRef.current.add(id);
     setStaff((prev) => {
       const remaining = prev.filter((m) => m.id !== id);
-      localStorage.setItem(STORAGE_KEYS.STAFF, JSON.stringify(remaining));
+      safeLocalStorageSet(STORAGE_KEYS.STAFF, remaining);
       return remaining;
     });
     deleteDoc(doc(db, 'editorialStaff', id)).catch((err) => {
@@ -869,7 +1014,7 @@ export function useInkspirerStore() {
 
     setAuthorProfiles((prev) => {
       const updated = [newProfile, ...prev];
-      localStorage.setItem(STORAGE_KEYS.AUTHOR_PROFILES, JSON.stringify(updated));
+      safeLocalStorageSet(STORAGE_KEYS.AUTHOR_PROFILES, updated);
       return updated;
     });
 
@@ -896,7 +1041,7 @@ export function useInkspirerStore() {
         }
         return art;
       });
-      localStorage.setItem(STORAGE_KEYS.ARTICLES, JSON.stringify(synced));
+      safeLocalStorageSet(STORAGE_KEYS.ARTICLES, synced);
       return synced;
     });
 
@@ -909,7 +1054,6 @@ export function useInkspirerStore() {
     previousName?: string
   ) => {
     let targetOldName = previousName || '';
-    let finalMergedProfile: StudentAuthorProfile | null = null;
 
     setAuthorProfiles((prev) => {
       const updatedList = prev.map((prof) => {
@@ -940,11 +1084,10 @@ export function useInkspirerStore() {
           delete mergedRaw.joinedYear;
         }
         const merged = stripUndefined(mergedRaw);
-        finalMergedProfile = merged;
         safeSetDoc('authorProfiles', id, merged);
         return merged;
       });
-      localStorage.setItem(STORAGE_KEYS.AUTHOR_PROFILES, JSON.stringify(updatedList));
+      safeLocalStorageSet(STORAGE_KEYS.AUTHOR_PROFILES, updatedList);
       return updatedList;
     });
 
@@ -993,15 +1136,16 @@ export function useInkspirerStore() {
         }
         return art;
       });
-      localStorage.setItem(STORAGE_KEYS.ARTICLES, JSON.stringify(synced));
+      safeLocalStorageSet(STORAGE_KEYS.ARTICLES, synced);
       return synced;
     });
   };
 
   const deleteAuthorProfile = (id: string) => {
+    deletedIdsRef.current.add(id);
     setAuthorProfiles((prev) => {
       const remaining = prev.filter((p) => p.id !== id);
-      localStorage.setItem(STORAGE_KEYS.AUTHOR_PROFILES, JSON.stringify(remaining));
+      safeLocalStorageSet(STORAGE_KEYS.AUTHOR_PROFILES, remaining);
       return remaining;
     });
     deleteDoc(doc(db, 'authorProfiles', id)).catch((err) => {
@@ -1020,22 +1164,26 @@ export function useInkspirerStore() {
     setBookmarks([]);
     setLikedArticles([]);
     setReadingProgressMap({});
-    localStorage.clear();
+    try {
+      localStorage.clear();
+    } catch {
+      // ignore
+    }
 
     INITIAL_ARTICLES.forEach((art) => {
-      setDoc(doc(db, 'articles', art.id), art).catch(() => {});
+      safeSetDoc('articles', art.id, art);
     });
     INITIAL_ANNOUNCEMENTS.forEach((ann) => {
-      setDoc(doc(db, 'announcements', ann.id), ann).catch(() => {});
+      safeSetDoc('announcements', ann.id, ann);
     });
     INITIAL_CATEGORIES.forEach((cat) => {
-      setDoc(doc(db, 'categories', cat.id), cat).catch(() => {});
+      safeSetDoc('categories', cat.id, cat);
     });
     INITIAL_SUBMISSIONS.forEach((sub) => {
-      setDoc(doc(db, 'submissions', sub.id), sub).catch(() => {});
+      safeSetDoc('submissions', sub.id, sub);
     });
     INITIAL_EDITORIAL_STAFF.forEach((member) => {
-      setDoc(doc(db, 'editorialStaff', member.id), member).catch(() => {});
+      safeSetDoc('editorialStaff', member.id, member);
     });
     INITIAL_AUTHOR_PROFILES.forEach((prof) => {
       safeSetDoc('authorProfiles', prof.id, prof);

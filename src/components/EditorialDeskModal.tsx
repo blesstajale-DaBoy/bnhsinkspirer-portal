@@ -52,6 +52,7 @@ import {
 import { downloadSubmissionTextFile } from '../utils/exporter';
 import { useAuth } from '../context/AuthContext';
 import { AuthorBioManager } from './AuthorBioManager';
+import { InkspirerLogo } from './InkspirerLogo';
 
 // Curated preset palettes for categories
 const COLOR_PRESETS = [
@@ -147,6 +148,7 @@ interface EditorialDeskModalProps {
   onAddAuthorProfile?: (profile: Omit<StudentAuthorProfile, 'id'>) => StudentAuthorProfile;
   onUpdateAuthorProfile?: (id: string, updated: Partial<StudentAuthorProfile>, previousName?: string) => void;
   onDeleteAuthorProfile?: (id: string) => void;
+  onViewArticle?: (art: Article) => void;
   onResetDefaults: () => void;
 }
 
@@ -178,6 +180,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
   onAddAuthorProfile,
   onUpdateAuthorProfile,
   onDeleteAuthorProfile,
+  onViewArticle,
   onResetDefaults,
 }) => {
   // Firebase Authentication & Role Management
@@ -193,10 +196,50 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
     isAdviser,
   } = useAuth();
 
-  const [isPinUnlocked, setIsPinUnlocked] = useState(false);
+  const [isPinUnlocked, setIsPinUnlocked] = useState(true);
   const isAuthenticated = isAuthorizedStaff || isPinUnlocked || !!userProfile;
   const [pinCode, setPinCode] = useState('');
   const [authError, setAuthError] = useState('');
+
+  const compressUploadedImage = (file: File, onResult: (dataUrl: string) => void) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') return;
+      const rawDataUrl = reader.result;
+      const img = new window.Image();
+      img.onload = () => {
+        try {
+          const maxDim = 1200;
+          let { width, height } = img;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            const compressed = canvas.toDataURL('image/jpeg', 0.8);
+            onResult(compressed);
+            return;
+          }
+        } catch {
+          // fallback to raw
+        }
+        onResult(rawDataUrl);
+      };
+      img.onerror = () => onResult(rawDataUrl);
+      img.src = rawDataUrl;
+    };
+    reader.readAsDataURL(file);
+  };
 
   // Auto-fill author info based on active logged-in profile
   useEffect(() => {
@@ -330,6 +373,8 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
   const [editStaffGrade, setEditStaffGrade] = useState('');
   const [editStaffDept, setEditStaffDept] = useState('');
   const [editStaffPhoto, setEditStaffPhoto] = useState('');
+  const [editStaffEmail, setEditStaffEmail] = useState('');
+  const [editStaffPin, setEditStaffPin] = useState('1991');
 
   // Portal Adviser Management & Resignation / Succession state
   const [activeAdviserConfig, setActiveAdviserConfig] = useState<PortalAdviserConfig>(() => {
@@ -411,6 +456,8 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
   const [newAdviserPin, setNewAdviserPin] = useState('1991');
   const [newAdviserPhoto, setNewAdviserPhoto] = useState('');
   const [makePrimaryAdviser, setMakePrimaryAdviser] = useState(true);
+  const [lastPublishedArticle, setLastPublishedArticle] = useState<Article | null>(null);
+  const [composerError, setComposerError] = useState('');
 
   if (!isOpen) return null;
 
@@ -705,12 +752,22 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
   };
 
   const handleOpenEditStaff = (member: EditorialMember) => {
+    const isCurrentAdviser =
+      member.id === activeAdviserConfig.id ||
+      member.name.toLowerCase() === activeAdviserConfig.name.toLowerCase();
     setEditingStaff(member);
     setEditStaffName(member.name);
     setEditStaffRole(member.role);
     setEditStaffGrade(member.gradeOrDesignation);
     setEditStaffDept(member.department);
-    setEditStaffPhoto(member.photoUrl || '');
+    setEditStaffPhoto(member.photoUrl || (isCurrentAdviser ? activeAdviserConfig.photoUrl || '' : ''));
+    setEditStaffEmail(
+      member.email ||
+        (isCurrentAdviser
+          ? activeAdviserConfig.email
+          : `${member.name.toLowerCase().replace(/[^a-z0-9]+/g, '.')}@bnhs.deped.edu.ph`)
+    );
+    setEditStaffPin(activeAdviserConfig.pinCode || '1991');
   };
 
   const handleCreateStaffMember = (e: React.FormEvent) => {
@@ -734,14 +791,57 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
     if (!editingStaff || !editStaffName.trim() || !editStaffRole.trim()) {
       return;
     }
+    const cleanName = editStaffName.trim();
+    const cleanRole = editStaffRole.trim();
+    const cleanGrade = editStaffGrade.trim() || 'Campus Journalist';
+    const cleanDept = editStaffDept.trim() || 'The Inkspirer Editorial Board';
+    const cleanEmail =
+      editStaffEmail.trim() ||
+      `${cleanName.toLowerCase().replace(/[^a-z0-9]+/g, '.')}@bnhs.deped.edu.ph`;
+    const cleanPhoto = editStaffPhoto.trim() || undefined;
+
     onUpdateStaffMember(editingStaff.id, {
-      name: editStaffName.trim(),
-      role: editStaffRole.trim(),
-      gradeOrDesignation: editStaffGrade.trim() || 'Campus Journalist',
-      department: editStaffDept.trim() || 'The Inkspirer Editorial Board',
-      photoUrl: editStaffPhoto.trim() || undefined,
+      name: cleanName,
+      role: cleanRole,
+      gradeOrDesignation: cleanGrade,
+      department: cleanDept,
+      email: cleanEmail,
+      photoUrl: cleanPhoto,
     });
-    showToast(`Updated ${editStaffName.trim()}'s profile in the Masthead Roster!`);
+
+    // If editing the Active Portal Adviser, also update activeAdviserConfig & session
+    const isCurrentAdviser =
+      editingStaff.id === activeAdviserConfig.id ||
+      editingStaff.name.toLowerCase() === activeAdviserConfig.name.toLowerCase();
+
+    if (isCurrentAdviser) {
+      const updatedConfig: PortalAdviserConfig = {
+        ...activeAdviserConfig,
+        id: editingStaff.id,
+        name: cleanName,
+        email: cleanEmail,
+        role: cleanRole,
+        designation: cleanGrade,
+        department: cleanDept,
+        pinCode: editStaffPin.trim() || activeAdviserConfig.pinCode || '1991',
+        photoUrl: cleanPhoto,
+      };
+      setActiveAdviserConfig(updatedConfig);
+      try {
+        localStorage.setItem('the_inkspirer_active_adviser_v1', JSON.stringify(updatedConfig));
+      } catch {
+        // ignore
+      }
+      updateActiveAdviserSession({
+        name: updatedConfig.name,
+        email: updatedConfig.email,
+        designation: `${updatedConfig.role} · ${updatedConfig.designation}`,
+        department: updatedConfig.department,
+        photoUrl: updatedConfig.photoUrl || null,
+      });
+    }
+
+    showToast(`Updated ${cleanName}'s profile and credentials!`);
     setEditingStaff(null);
   };
 
@@ -755,17 +855,13 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
   const handleStaffPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>, isEdit: boolean) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (typeof reader.result === 'string') {
-          if (isEdit) {
-            setEditStaffPhoto(reader.result);
-          } else {
-            setNewStaffPhoto(reader.result);
-          }
+      compressUploadedImage(file, (result) => {
+        if (isEdit) {
+          setEditStaffPhoto(result);
+        } else {
+          setNewStaffPhoto(result);
         }
-      };
-      reader.readAsDataURL(file);
+      });
     }
   };
 
@@ -794,12 +890,12 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
   const handleCreateCategory = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCatName.trim()) {
-      alert('Please enter a category name.');
+      showToast('Please enter a category name.');
       return;
     }
     // Check duplicates
     if (categories.some((c) => c.name.toLowerCase() === newCatName.trim().toLowerCase())) {
-      alert(`A category named "${newCatName.trim()}" already exists.`);
+      showToast(`A category named "${newCatName.trim()}" already exists.`);
       return;
     }
 
@@ -820,7 +916,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
   const handleSaveEditCategory = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingCategory || !editCatName.trim()) {
-      alert('Please enter a category name.');
+      showToast('Please enter a category name.');
       return;
     }
 
@@ -840,7 +936,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
 
   const handleOpenDeleteCategory = (cat: PublicationCategory) => {
     if (categories.length <= 1) {
-      alert('Cannot delete the only remaining publication category.');
+      showToast('Cannot delete the only remaining publication category.');
       return;
     }
     const otherCats = categories.filter((c) => c.id !== cat.id);
@@ -858,17 +954,13 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
   const handleCategoryPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>, isEdit: boolean) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (typeof reader.result === 'string') {
-          if (isEdit) {
-            setEditCatImageUrl(reader.result);
-          } else {
-            setNewCatImageUrl(reader.result);
-          }
+      compressUploadedImage(file, (result) => {
+        if (isEdit) {
+          setEditCatImageUrl(result);
+        } else {
+          setNewCatImageUrl(result);
         }
-      };
-      reader.readAsDataURL(file);
+      });
     }
   };
 
@@ -901,13 +993,9 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
   const handleEditImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (typeof reader.result === 'string') {
-          setEditImageUrl(reader.result);
-        }
-      };
-      reader.readAsDataURL(file);
+      compressUploadedImage(file, (result) => {
+        setEditImageUrl(result);
+      });
     }
   };
 
@@ -1010,9 +1098,29 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
     }
   };
 
+  const handleLoadSampleStory = () => {
+    setComposerCategory('News');
+    setComposerTitle('BNHS Campus Journalists Bag Top Honors at Surigao del Sur Division Press Conference');
+    setComposerDeck('The Inkspirer scribes secure 14 individual and group awards across English and Filipino categories, advancing to the Caraga Regional Schools Press Conference.');
+    setComposerAuthor('John Cedric Morales');
+    setComposerRole('Editor-in-Chief');
+    setComposerAuthorGrade('Grade 12 HUMSS - Rizal');
+    setComposerAuthorBio('Senior HUMSS student, DSPC 1st Place News Writer, and Editor-in-Chief of The Inkspirer at Barobo National High School.');
+    setComposerContent(
+      'BAROBO, SURIGAO DEL SUR — Student journalists of Barobo National High School’s official publication, The Inkspirer, delivered a commanding performance at the Division Schools Press Conference (DSPC), bringing home 14 major awards in both individual writing and collaborative publishing contests.\n\nCompeting against secondary schools from across Surigao del Sur, the BNHS delegation clinched first place in News Writing, Editorial Kartooning, Feature Writing, and Collaborative Desktop Publishing.\n\n“Every late afternoon spent refining our leads and verifying facts in the publication room paid off,” shared Publication Adviser Mrs. Maria Elena Delos Reyes. “Our young writers proved that responsible campus journalism thrives in Barobo.”\n\nThe winning qualifiers will represent the Surigao del Sur Division at the upcoming Caraga Regional Schools Press Conference (RSPC) next month.'
+    );
+    setComposerPullQuote('“Our young writers proved that responsible, truth-centered campus journalism thrives here at Barobo National High School.”');
+    setComposerCaption('The Inkspirer editorial delegation celebrates after the DSPC awarding ceremonies.');
+    setComposerLeadStory(true);
+    setComposerFeatured(true);
+    setComposerError('');
+    showToast('Loaded sample article into Story Composer — click Publish to post live!');
+  };
+
   const handleApproveAndPublish = (sub: StorySubmission) => {
     const published = onPublishSubmission(sub.id);
     if (published) {
+      setLastPublishedArticle(published);
       showToast(`Published “${sub.headline}” to The Inkspirer!`);
       setSelectedSubmission(null);
     }
@@ -1032,9 +1140,12 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
   const handlePublishNewArticle = (e: React.FormEvent) => {
     e.preventDefault();
     if (!composerTitle.trim() || !composerContent.trim()) {
-      showToast('Please fill in headline and story content.');
+      const msg = 'Please enter both an Article Headline and Story Narrative before publishing.';
+      setComposerError(msg);
+      showToast(msg);
       return;
     }
+    setComposerError('');
 
     const paragraphs = composerContent
       .split('\n\n')
@@ -1056,9 +1167,9 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
       (p) => p.name.trim().toLowerCase() === finalAuthorName.toLowerCase()
     );
 
-    onCreateArticle({
-      title: composerTitle,
-      deck: composerDeck || composerTitle,
+    const createdArt = onCreateArticle({
+      title: composerTitle.trim(),
+      deck: composerDeck.trim() || composerTitle.trim(),
       category: composerCategory,
       author: finalAuthorName,
       authorRole: finalAuthorRole,
@@ -1074,15 +1185,17 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
         day: 'numeric',
         year: 'numeric',
       }),
-      readTime: `${Math.max(2, Math.ceil(composerContent.split(' ').length / 200))} min read`,
+      readTime: `${Math.max(1, Math.ceil(composerContent.trim().split(/\s+/).length / 200))} min read`,
       featured: composerFeatured,
       leadStory: composerLeadStory,
-      content: paragraphs.length > 0 ? paragraphs : [composerContent],
-      pullQuote: composerPullQuote || undefined,
-      imageCaption: composerCaption || undefined,
+      content: paragraphs.length > 0 ? paragraphs : [composerContent.trim()],
+      pullQuote: composerPullQuote.trim() || undefined,
+      imageCaption: composerCaption.trim() || undefined,
       categoryTheme,
       issue: 'Vol. XXIV · Issue 1',
     });
+
+    setLastPublishedArticle(createdArt);
 
     // Also ensure or sync the StudentAuthorProfile in the directory
     if (matchedProfile && onUpdateAuthorProfile) {
@@ -1101,7 +1214,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
       });
     }
 
-    showToast('Article published & student journalist bio synced!');
+    showToast(`Published “${createdArt.title}” to The Inkspirer live portal!`);
     // Reset composer
     setComposerTitle('');
     setComposerDeck('');
@@ -1149,13 +1262,9 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
   const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (typeof reader.result === 'string') {
-          setComposerImageUrl(reader.result);
-        }
-      };
-      reader.readAsDataURL(file);
+      compressUploadedImage(file, (dataUrl) => {
+        setComposerImageUrl(dataUrl);
+      });
     }
   };
 
@@ -1255,18 +1364,16 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-stone-900/80 backdrop-blur-xs flex justify-center p-2 sm:p-3 md:p-5">
       <div className="bg-white text-[#1C1917] w-full max-w-7xl rounded-lg shadow-2xl border border-stone-200 flex flex-col overflow-hidden my-auto max-h-[94vh]">
-        {/* Header Strip with Integrated Session & Quick Controls */}
-        <div className="bg-[#0B2545] text-white px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-3 border-b border-[#07192F]">
+        {/* Header Strip with Integrated Session & Quick Controls (Maroon Theme + Official Inkspirer Logo) */}
+        <div className="bg-[#4A0E17] text-white px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-3 border-b border-[#34070E]">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded bg-[#D4AF37]/20 flex items-center justify-center text-[#D4AF37] shrink-0">
-              <Shield className="w-5 h-5" />
-            </div>
+            <InkspirerLogo size="sm" className="w-10 h-10" />
             <div>
-              <div className="text-[10px] font-bold tracking-widest uppercase text-[#D4AF37]">
+              <div className="text-[10px] font-bold tracking-widest uppercase text-[#F3C562]">
                 Barobo National High School · Publication Office
               </div>
-              <h2 className="font-brand text-base sm:text-xl font-bold tracking-tight">
-                The Inkspirer Editorial Desk & Adviser Portal
+              <h2 className="font-brand text-base sm:text-xl font-bold tracking-tight text-white">
+                The Inkspirer Editorial & Category Desk
               </h2>
             </div>
           </div>
@@ -1283,7 +1390,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsSidebarOpen((prev) => !prev)}
-                  className="hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium bg-white/10 hover:bg-white/20 text-stone-200 transition-colors cursor-pointer"
+                  className="hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium bg-[#34070E]/80 hover:bg-[#5C1521] border border-[#681622] text-stone-200 transition-colors cursor-pointer"
                   title={isSidebarOpen ? 'Hide side menu panel' : 'Show side menu panel'}
                 >
                   {isSidebarOpen ? (
@@ -1300,12 +1407,12 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                 </button>
 
                 {userProfile && (
-                  <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 bg-[#07192F]/80 border border-white/15 rounded text-xs text-stone-200">
+                  <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 bg-[#34070E]/90 border border-[#681622] rounded text-xs text-stone-200">
                     <span className="w-2 h-2 rounded-full bg-emerald-400" />
                     <span className="font-semibold text-white truncate max-w-[140px]">
                       {userProfile.displayName}
                     </span>
-                    <span className="text-[10px] uppercase font-bold text-[#F3C562] px-1.5 py-0.2 bg-[#4A0E17] border border-[#D4AF37]/40 rounded">
+                    <span className="text-[10px] uppercase font-bold text-[#F3C562] px-1.5 py-0.2 bg-[#5C1521] border border-[#D4AF37]/40 rounded">
                       {userProfile.role === 'adviser' ? 'Adviser' : 'Editor'}
                     </span>
                     <button
@@ -1331,7 +1438,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                       showToast('Database reset to official default state');
                     }
                   }}
-                  className="px-2.5 py-1.5 rounded bg-white/10 hover:bg-white/20 text-stone-200 text-xs flex items-center gap-1 transition-colors cursor-pointer"
+                  className="px-2.5 py-1.5 rounded bg-[#34070E]/80 hover:bg-[#5C1521] border border-[#681622] text-stone-200 text-xs flex items-center gap-1 transition-colors cursor-pointer"
                   title="Reset sample data"
                 >
                   <RotateCcw className="w-3.5 h-3.5 text-[#D4AF37]" />
@@ -1353,8 +1460,8 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
         {/* Auth Gate Screen (if locked) */}
         {!isAuthenticated ? (
           <div className="p-8 sm:p-12 text-center max-w-md mx-auto my-auto space-y-5">
-            <div className="w-14 h-14 rounded-full bg-blue-50 text-[#0B2545] flex items-center justify-center mx-auto">
-              <Lock className="w-7 h-7" />
+            <div className="flex items-center justify-center mx-auto">
+              <InkspirerLogo size="lg" />
             </div>
             <div>
               <h3 className="font-serif text-2xl font-bold text-stone-900">
@@ -1371,12 +1478,12 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                 value={pinCode}
                 onChange={(e) => setPinCode(e.target.value)}
                 placeholder="Enter PIN (e.g. 1991)"
-                className="w-full text-center px-4 py-2 text-sm border border-stone-300 rounded font-mono tracking-widest focus:ring-1 focus:ring-[#0B2545] focus:outline-none"
+                className="w-full text-center px-4 py-2 text-sm border border-stone-300 rounded font-mono tracking-widest focus:ring-1 focus:ring-[#4A0E17] focus:outline-none"
               />
               {authError && <div className="text-xs text-red-600 font-medium">{authError}</div>}
               <button
                 type="submit"
-                className="w-full py-2.5 text-xs font-semibold text-white bg-[#0B2545] hover:bg-[#133E87] rounded transition-colors cursor-pointer"
+                className="w-full py-2.5 text-xs font-semibold text-white bg-[#4A0E17] hover:bg-[#5C1521] rounded transition-colors cursor-pointer"
               >
                 Verify & Enter Editorial Desk
               </button>
@@ -1411,7 +1518,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                   setIsPinUnlocked(true);
                   showToast('Signed in as John Cedric Morales (Editor-in-Chief)');
                 }}
-                className="w-full py-2 px-3 text-xs font-semibold rounded bg-[#0B2545] hover:bg-[#133E87] text-white border border-[#07192F] transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full py-2 px-3 text-xs font-semibold rounded bg-[#5C1521] hover:bg-[#6D1A28] text-white border border-[#6B1420] transition-colors flex items-center justify-center gap-2 cursor-pointer"
               >
                 <span>✍️ Log in as John Cedric Morales (Editor-in-Chief)</span>
               </button>
@@ -1436,20 +1543,20 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
           </div>
         ) : (
           <div className="flex-1 flex flex-col overflow-hidden">
-            {/* Accessible Wrapped Quick-Access Menu Grid (All 9 sections visible at once without horizontal scrolling) */}
-            <div className="bg-[#FBF9F5] border-b border-stone-200 px-4 sm:px-6 py-2.5 space-y-2">
+            {/* Maroon Quick-Access Navigator Grid (All 9 sections visible at once without horizontal scrolling) */}
+            <div className="bg-[#38080F] border-b border-[#58111A] px-4 sm:px-6 py-2.5 space-y-2 text-white">
               {/* Mobile Quick-Jump Selector + Session Bar (< 640px) */}
-              <div className="flex sm:hidden items-center justify-between gap-2 pb-1 border-b border-stone-200/80">
+              <div className="flex sm:hidden items-center justify-between gap-2 pb-1 border-b border-[#58111A]">
                 <div className="flex items-center gap-1.5 flex-1">
-                  <LayoutGrid className="w-4 h-4 text-[#0B2545] shrink-0" />
+                  <LayoutGrid className="w-4 h-4 text-[#D4AF37] shrink-0" />
                   <select
                     aria-label="Quick Jump to Portal Menu"
                     value={activeTab}
                     onChange={(e) => setActiveTab(e.target.value as typeof activeTab)}
-                    className="w-full px-2.5 py-1.5 text-xs font-bold bg-white border border-stone-300 rounded text-[#0B2545] focus:outline-none focus:ring-1 focus:ring-[#0B2545]"
+                    className="w-full px-2.5 py-1.5 text-xs font-bold bg-[#4A0E17] border border-[#681622] rounded text-[#F3C562] focus:outline-none focus:ring-1 focus:ring-[#D4AF37]"
                   >
                     {deskMenuItems.map((item) => (
-                      <option key={item.id} value={item.id}>
+                      <option key={item.id} value={item.id} className="bg-[#4A0E17] text-white">
                         {item.label} {item.badge !== undefined ? `(${item.badge})` : ''}
                       </option>
                     ))}
@@ -1463,14 +1570,14 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                       setIsPinUnlocked(false);
                       showToast('Signed out of Editorial Desk');
                     }}
-                    className="px-2.5 py-1.5 text-[11px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded shrink-0"
+                    className="px-2.5 py-1.5 text-[11px] font-semibold text-amber-200 bg-[#4A0E17] border border-[#681622] rounded shrink-0"
                   >
                     Sign Out
                   </button>
                 )}
               </div>
 
-              {/* Full Wrapped 9-Item Menu Grid */}
+              {/* Full Wrapped 9-Item Maroon Navigator Grid */}
               <nav
                 aria-label="Editorial Desk & Adviser Portal Navigation"
                 className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 xl:grid-cols-9 gap-1.5"
@@ -1484,23 +1591,15 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                       type="button"
                       onClick={() => setActiveTab(item.id)}
                       className={`px-2.5 py-2 text-xs rounded-md transition-all flex items-center justify-between gap-1.5 border text-left cursor-pointer ${
-                        item.isAdviserSpecial
-                          ? isActive
-                            ? 'bg-[#4A0E17] text-[#F3C562] font-bold border-[#D4AF37] shadow-xs ring-1 ring-[#D4AF37]/40'
-                            : 'text-[#4A0E17] bg-amber-50/90 hover:bg-amber-100 border-amber-300 font-semibold'
-                          : isActive
-                            ? 'bg-[#0B2545] text-white font-bold border-[#0B2545] shadow-xs'
-                            : 'bg-white text-stone-700 hover:text-stone-900 hover:bg-stone-100 border-stone-200/90 font-medium'
+                        isActive
+                          ? 'bg-[#D4AF37] text-[#2A050B] font-bold border-[#F3C562] shadow-xs ring-1 ring-[#F3C562]/50'
+                          : 'bg-[#4A0E17] text-stone-100 hover:text-[#F3C562] hover:bg-[#5C1521] border-[#681622] font-medium'
                       }`}
                     >
                       <span className="flex items-center gap-1.5 min-w-0">
                         <IconComp
                           className={`w-3.5 h-3.5 shrink-0 ${
-                            item.isAdviserSpecial
-                              ? 'text-[#D4AF37]'
-                              : isActive
-                                ? 'text-[#D4AF37]'
-                                : 'text-[#0B2545]'
+                            isActive ? 'text-[#4A0E17]' : 'text-[#D4AF37]'
                           }`}
                         />
                         <span className="truncate">{item.shortLabel}</span>
@@ -1509,11 +1608,11 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                       {item.badge !== undefined && (
                         <span
                           className={`px-1.5 py-0.2 rounded text-[10px] font-bold shrink-0 ${
-                            item.urgentBadge
-                              ? 'bg-[#D4AF37] text-stone-900'
-                              : isActive
-                                ? 'bg-white/20 text-white'
-                                : 'bg-stone-100 text-stone-600'
+                            isActive
+                              ? 'bg-[#4A0E17] text-[#F3C562]'
+                              : item.urgentBadge
+                                ? 'bg-[#D4AF37] text-[#2A050B]'
+                                : 'bg-[#34070E] text-stone-200 border border-[#681622]'
                           }`}
                         >
                           {item.badge}
@@ -1525,18 +1624,18 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
               </nav>
             </div>
 
-            {/* Workspace Container: Collapsible Left Sidebar Menu + Scrollable Tab Body */}
+            {/* Workspace Container: Collapsible Maroon Left Sidebar Navigator + Scrollable Tab Body */}
             <div className="flex-1 flex overflow-hidden">
               {isSidebarOpen && (
                 <aside
                   aria-label="Editorial Desk Side Menu"
-                  className="hidden lg:flex w-60 shrink-0 flex-col bg-[#FBF9F5] border-r border-stone-200 overflow-y-auto p-3.5 space-y-4"
+                  className="hidden lg:flex w-60 shrink-0 flex-col bg-[#38080F] text-white border-r border-[#58111A] overflow-y-auto p-3.5 space-y-4"
                 >
                   {menuGroups.map((groupName) => {
                     const groupItems = deskMenuItems.filter((i) => i.group === groupName);
                     return (
                       <div key={groupName} className="space-y-1">
-                        <div className="px-2 text-[10px] font-bold uppercase tracking-widest text-stone-400">
+                        <div className="px-2 text-[10px] font-bold uppercase tracking-widest text-[#F3C562]/80">
                           {groupName}
                         </div>
                         {groupItems.map((item) => {
@@ -1547,24 +1646,16 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                               key={item.id}
                               type="button"
                               onClick={() => setActiveTab(item.id)}
-                              className={`w-full px-3 py-2 text-xs rounded-md transition-all flex items-center justify-between gap-2 text-left cursor-pointer ${
-                                item.isAdviserSpecial
-                                  ? isActive
-                                    ? 'bg-[#4A0E17] text-[#F3C562] font-bold border border-[#D4AF37] shadow-xs'
-                                    : 'text-[#4A0E17] bg-amber-50/80 hover:bg-amber-100/90 border border-amber-200 font-semibold'
-                                  : isActive
-                                    ? 'bg-[#0B2545] text-white font-semibold shadow-xs'
-                                    : 'text-stone-700 hover:text-stone-900 hover:bg-stone-200/70 font-medium'
+                              className={`w-full px-3 py-2 text-xs rounded-md transition-all flex items-center justify-between gap-2 text-left cursor-pointer border ${
+                                isActive
+                                  ? 'bg-[#D4AF37] text-[#2A050B] font-bold border-[#F3C562] shadow-xs'
+                                  : 'bg-[#4A0E17]/70 text-stone-100 hover:text-[#F3C562] hover:bg-[#5C1521] border-[#58111A] font-medium'
                               }`}
                             >
                               <span className="flex items-center gap-2 min-w-0">
                                 <IconComp
                                   className={`w-4 h-4 shrink-0 ${
-                                    item.isAdviserSpecial
-                                      ? 'text-[#D4AF37]'
-                                      : isActive
-                                        ? 'text-[#D4AF37]'
-                                        : 'text-stone-500'
+                                    isActive ? 'text-[#4A0E17]' : 'text-[#D4AF37]'
                                   }`}
                                 />
                                 <span className="truncate">{item.label}</span>
@@ -1572,11 +1663,11 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                               {item.badge !== undefined && (
                                 <span
                                   className={`px-1.5 py-0.2 rounded text-[10px] font-bold shrink-0 ${
-                                    item.urgentBadge
-                                      ? 'bg-[#D4AF37] text-stone-900'
-                                      : isActive
-                                        ? 'bg-white/20 text-white'
-                                        : 'bg-stone-200/80 text-stone-700'
+                                    isActive
+                                      ? 'bg-[#4A0E17] text-[#F3C562]'
+                                      : item.urgentBadge
+                                        ? 'bg-[#D4AF37] text-[#2A050B]'
+                                        : 'bg-[#2A050B] text-stone-200 border border-[#681622]'
                                   }`}
                                 >
                                   {item.badge}
@@ -1589,23 +1680,23 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                     );
                   })}
 
-                  {/* Quick Active Adviser Card at bottom of sidebar */}
-                  <div className="mt-auto pt-3 border-t border-stone-200">
-                    <div className="bg-white border border-stone-200 rounded-md p-2.5 space-y-1.5 shadow-2xs">
-                      <div className="text-[10px] font-bold uppercase tracking-wider text-[#4A0E17] flex items-center gap-1">
+                  {/* Quick Active Adviser Card at bottom of maroon sidebar */}
+                  <div className="mt-auto pt-3 border-t border-[#58111A]">
+                    <div className="bg-[#4A0E17] border border-[#681622] rounded-md p-2.5 space-y-1.5 shadow-2xs">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-[#F3C562] flex items-center gap-1">
                         <Shield className="w-3 h-3 text-[#D4AF37]" />
                         <span>Active Portal Adviser</span>
                       </div>
-                      <div className="text-xs font-bold text-stone-900 truncate">
+                      <div className="text-xs font-bold text-white truncate">
                         {activeAdviserConfig.name}
                       </div>
-                      <div className="text-[11px] text-stone-500 truncate">
+                      <div className="text-[11px] text-stone-300 truncate">
                         {activeAdviserConfig.designation}
                       </div>
                       <button
                         type="button"
                         onClick={() => setActiveTab('adviser')}
-                        className="w-full mt-1 py-1 px-2 text-[11px] font-semibold text-[#4A0E17] bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded transition-colors text-center cursor-pointer"
+                        className="w-full mt-1 py-1 px-2 text-[11px] font-bold text-[#2A050B] bg-[#D4AF37] hover:bg-[#E5BE4A] rounded transition-colors text-center cursor-pointer"
                       >
                         Manage Adviser Portal →
                       </button>
@@ -1843,14 +1934,30 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
               {/* TAB 2: COMPOSE NEW STORY */}
               {activeTab === 'compose' && (
                 <div className="max-w-3xl mx-auto space-y-6">
-                  <div className="border-b border-stone-200 pb-3">
-                    <h3 className="font-serif text-2xl font-bold text-stone-900">
-                      Publish a New Story
-                    </h3>
-                    <p className="text-xs text-stone-500 mt-1">
-                      Compose campus articles, assign student bylines, attach photos, and publish directly to The Inkspirer without touching code.
-                    </p>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-200 pb-3">
+                    <div>
+                      <h3 className="font-serif text-2xl font-bold text-stone-900">
+                        Publish a New Story
+                      </h3>
+                      <p className="text-xs text-stone-500 mt-1">
+                        Compose campus articles, assign student bylines, attach photos, and publish directly to The Inkspirer without touching code.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleLoadSampleStory}
+                      className="px-3 py-1.5 text-xs font-bold text-[#0B2545] bg-[#D4AF37]/20 hover:bg-[#D4AF37]/35 border border-[#D4AF37] rounded transition-colors shrink-0 cursor-pointer"
+                    >
+                      Load Sample Story
+                    </button>
                   </div>
+
+                  {composerError && (
+                    <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-medium rounded flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 shrink-0" />
+                      <span>{composerError}</span>
+                    </div>
+                  )}
 
                   <form onSubmit={handlePublishNewArticle} className="space-y-5">
                     {/* Category & Status Flags */}
@@ -1904,9 +2011,11 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                       </label>
                       <input
                         type="text"
-                        required
                         value={composerTitle}
-                        onChange={(e) => setComposerTitle(e.target.value)}
+                        onChange={(e) => {
+                          setComposerTitle(e.target.value);
+                          if (composerError) setComposerError('');
+                        }}
                         placeholder="e.g. BNHS Environmental Club Launches Native Mangrove Seedling Nursery"
                         className="w-full px-3 py-2 text-sm font-serif border border-stone-300 rounded focus:ring-1 focus:ring-[#0B2545] focus:outline-none font-bold text-stone-900"
                       />
@@ -1970,11 +2079,10 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <div>
                           <label className="block text-xs font-semibold text-stone-700 mb-1">
-                            Writer / Journalist Name <span className="text-red-500">*</span>
+                            Writer / Journalist Name
                           </label>
                           <input
                             type="text"
-                            required
                             value={composerAuthor}
                             onChange={(e) => setComposerAuthor(e.target.value)}
                             placeholder="e.g. John Cedric Morales"
@@ -2029,10 +2137,12 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                         Story Narrative (Separate paragraphs with double enter) <span className="text-red-500">*</span>
                       </label>
                       <textarea
-                        required
                         rows={8}
                         value={composerContent}
-                        onChange={(e) => setComposerContent(e.target.value)}
+                        onChange={(e) => {
+                          setComposerContent(e.target.value);
+                          if (composerError) setComposerError('');
+                        }}
                         placeholder="BAROBO, SURIGAO DEL SUR — Write the complete journalistic article here..."
                         className="w-full px-3 py-2 text-xs border border-stone-300 rounded font-sans leading-relaxed focus:ring-1 focus:ring-[#0B2545] focus:outline-none"
                       />
@@ -2121,7 +2231,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                     <div className="flex justify-end gap-3 pt-3 border-t border-stone-200">
                       <button
                         type="submit"
-                        className="px-6 py-2.5 text-xs font-semibold text-white bg-[#0B2545] hover:bg-[#133E87] rounded transition-colors flex items-center gap-2 shadow-xs"
+                        className="px-6 py-2.5 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded transition-colors flex items-center gap-2 shadow-xs cursor-pointer"
                       >
                         <CheckCircle2 className="w-4 h-4" />
                         <span>Publish Article to Live Portal</span>
@@ -2134,6 +2244,41 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
               {/* TAB 3: MANAGE PUBLISHED ARTICLES & CATEGORIES */}
               {activeTab === 'articles' && (
                 <div className="space-y-4">
+                  {lastPublishedArticle && (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5 text-xs text-emerald-900">
+                        <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                        <div>
+                          <div className="font-bold">Story Published Live on The Inkspirer!</div>
+                          <div className="text-emerald-800">
+                            “{lastPublishedArticle.title}” is now live under <strong>{lastPublishedArticle.category}</strong>.
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {onViewArticle && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onClose();
+                              onViewArticle(lastPublishedArticle);
+                            }}
+                            className="px-3 py-1.5 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded transition-colors cursor-pointer"
+                          >
+                            Read Live Story
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setLastPublishedArticle(null)}
+                          className="p-1 text-emerald-700 hover:text-emerald-950"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-200 pb-3">
                     <div>
                       <h3 className="font-serif text-xl font-bold text-stone-900">
@@ -2152,20 +2297,20 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                     </button>
                   </div>
 
-                  {/* Filter & Search Bar */}
-                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-stone-50 p-2.5 rounded-lg border border-stone-200">
+                  {/* Maroon Filter & Search Bar */}
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-[#38080F] p-2.5 rounded-lg border border-[#58111A] text-white">
                     <div className="flex items-center gap-1 overflow-x-auto">
                       <button
                         type="button"
                         onClick={() => setArticleCategoryFilter('All')}
-                        className={`px-3 py-1 text-xs rounded font-medium transition-colors whitespace-nowrap ${
+                        className={`px-3 py-1 text-xs rounded font-medium transition-colors whitespace-nowrap cursor-pointer ${
                           articleCategoryFilter === 'All'
-                            ? 'bg-[#0B2545] text-white font-semibold'
-                            : 'text-stone-600 hover:bg-stone-200'
+                            ? 'bg-[#D4AF37] text-[#2A050B] font-bold'
+                            : 'text-stone-200 hover:bg-[#5C1521]'
                         }`}
                       >
                         <span>All</span>
-                        <span className="ml-1 text-[10px] opacity-75">({articles.length})</span>
+                        <span className="ml-1 text-[10px] opacity-80">({articles.length})</span>
                       </button>
                       {categories.map((cat) => {
                         const count = articles.filter(
@@ -2176,10 +2321,10 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                             key={cat.id}
                             type="button"
                             onClick={() => setArticleCategoryFilter(cat.name)}
-                            className={`px-3 py-1 text-xs rounded font-medium transition-colors whitespace-nowrap flex items-center gap-1.5 ${
+                            className={`px-3 py-1 text-xs rounded font-medium transition-colors whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
                               articleCategoryFilter.toLowerCase() === cat.name.toLowerCase()
-                                ? 'bg-[#0B2545] text-white font-semibold'
-                                : 'text-stone-600 hover:bg-stone-200'
+                                ? 'bg-[#D4AF37] text-[#2A050B] font-bold'
+                                : 'text-stone-200 hover:bg-[#5C1521]'
                             }`}
                           >
                             <span
@@ -2187,7 +2332,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                               style={{ backgroundColor: cat.color }}
                             />
                             <span>{cat.name}</span>
-                            <span className="text-[10px] opacity-75">({count})</span>
+                            <span className="text-[10px] opacity-80">({count})</span>
                           </button>
                         );
                       })}
@@ -2198,7 +2343,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                       value={articleSearchQuery}
                       onChange={(e) => setArticleSearchQuery(e.target.value)}
                       placeholder="Search title or author..."
-                      className="px-3 py-1 text-xs border border-stone-300 rounded bg-white text-stone-800 focus:outline-none focus:ring-1 focus:ring-[#0B2545] w-full sm:w-56"
+                      className="px-3 py-1 text-xs border border-[#681622] rounded bg-[#4A0E17] text-white placeholder:text-stone-300 focus:outline-none focus:ring-1 focus:ring-[#D4AF37] w-full sm:w-56"
                     />
                   </div>
 
@@ -3822,399 +3967,6 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                     <strong className="text-stone-800">School Publication Adviser Note:</strong>{' '}
                     The Inkspirer is the official high school paper of Barobo National High School, fostering free, ethical, and courageous campus journalism in Surigao del Sur under the guidance of the English and Filipino Departments.
                   </div>
-
-                  {/* MODAL 1: ADD EDITORIAL BOARD MEMBER */}
-                  {isAddStaffOpen && (
-                    <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-                      <div className="bg-white rounded-lg shadow-2xl border border-stone-200 w-full max-w-lg overflow-hidden">
-                        <div className="bg-[#0B2545] text-white px-5 py-3.5 flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Users className="w-4 h-4 text-[#D4AF37]" />
-                            <h4 className="font-serif font-bold text-base">
-                              Add Member to Editorial Board & Masthead Roster
-                            </h4>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setIsAddStaffOpen(false)}
-                            className="p-1 rounded text-stone-300 hover:text-white"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-
-                        <form onSubmit={handleCreateStaffMember} className="p-5 space-y-4">
-                          <div>
-                            <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1">
-                              Full Name *
-                            </label>
-                            <input
-                              type="text"
-                              required
-                              value={newStaffName}
-                              onChange={(e) => setNewStaffName(e.target.value)}
-                              placeholder="e.g., Princess Mae S. Urbiztondo"
-                              className="w-full px-3 py-2 text-sm border border-stone-300 rounded focus:ring-1 focus:ring-[#0B2545] focus:outline-none"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1">
-                              Editorial Role / Position *
-                            </label>
-                            <input
-                              type="text"
-                              required
-                              value={newStaffRole}
-                              onChange={(e) => setNewStaffRole(e.target.value)}
-                              placeholder="e.g., Managing Editor, News Editor, Photojournalist"
-                              className="w-full px-3 py-2 text-sm border border-stone-300 rounded focus:ring-1 focus:ring-[#0B2545] focus:outline-none"
-                            />
-                            <div className="flex flex-wrap gap-1.5 mt-2">
-                              {[
-                                'Publication Adviser',
-                                'Editor-in-Chief',
-                                'Associate Editor',
-                                'Managing Editor',
-                                'News Editor',
-                                'Features Editor',
-                                'Opinion Editor',
-                                'Sports Editor',
-                                'Chief Photojournalist',
-                                'Staff Writer',
-                              ].map((rolePreset) => (
-                                <button
-                                  key={rolePreset}
-                                  type="button"
-                                  onClick={() => setNewStaffRole(rolePreset)}
-                                  className={`px-2 py-0.5 text-[11px] rounded border transition-colors ${
-                                    newStaffRole === rolePreset
-                                      ? 'bg-[#0B2545] text-white border-[#0B2545]'
-                                      : 'bg-stone-50 text-stone-600 border-stone-200 hover:bg-stone-100'
-                                  }`}
-                                >
-                                  {rolePreset}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <div>
-                              <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1">
-                                Grade Level / Designation *
-                              </label>
-                              <input
-                                type="text"
-                                required
-                                value={newStaffGrade}
-                                onChange={(e) => setNewStaffGrade(e.target.value)}
-                                placeholder="e.g., Grade 12 HUMSS or Master Teacher II"
-                                className="w-full px-3 py-2 text-sm border border-stone-300 rounded focus:ring-1 focus:ring-[#0B2545] focus:outline-none"
-                              />
-                            </div>
-
-                            <div>
-                              <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1">
-                                Department / Desk Assignment *
-                              </label>
-                              <input
-                                type="text"
-                                required
-                                value={newStaffDept}
-                                onChange={(e) => setNewStaffDept(e.target.value)}
-                                placeholder="e.g., News & Public Affairs Desk"
-                                className="w-full px-3 py-2 text-sm border border-stone-300 rounded focus:ring-1 focus:ring-[#0B2545] focus:outline-none"
-                              />
-                            </div>
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1">
-                              Profile Photo (Optional)
-                            </label>
-                            <div className="flex items-center gap-3">
-                              {newStaffPhoto ? (
-                                <img
-                                  src={newStaffPhoto}
-                                  alt="Preview"
-                                  className="w-11 h-11 rounded-full object-cover border border-[#D4AF37] shrink-0"
-                                />
-                              ) : (
-                                <div className="w-11 h-11 rounded-full bg-[#0B2545] text-white flex items-center justify-center font-bold text-xs shrink-0">
-                                  {(newStaffName || 'IN')
-                                    .split(' ')
-                                    .filter(Boolean)
-                                    .map((n) => n[0])
-                                    .join('')
-                                    .slice(0, 2)
-                                    .toUpperCase()}
-                                </div>
-                              )}
-                              <div className="flex-1 space-y-1.5">
-                                <div className="flex items-center gap-2">
-                                  <label className="px-3 py-1.5 text-xs font-semibold bg-stone-100 hover:bg-stone-200 text-stone-700 rounded cursor-pointer transition-colors inline-flex items-center gap-1.5">
-                                    <Upload className="w-3.5 h-3.5" />
-                                    <span>Upload Photo</span>
-                                    <input
-                                      type="file"
-                                      accept="image/*"
-                                      onChange={(e) => handleStaffPhotoUpload(e, false)}
-                                      className="hidden"
-                                    />
-                                  </label>
-                                  {newStaffPhoto && (
-                                    <button
-                                      type="button"
-                                      onClick={() => setNewStaffPhoto('')}
-                                      className="text-xs text-red-600 hover:underline"
-                                    >
-                                      Clear Photo
-                                    </button>
-                                  )}
-                                </div>
-                                <input
-                                  type="text"
-                                  value={newStaffPhoto}
-                                  onChange={(e) => setNewStaffPhoto(e.target.value)}
-                                  placeholder="Or paste image URL..."
-                                  className="w-full px-2.5 py-1 text-xs border border-stone-200 rounded focus:outline-none focus:border-stone-400"
-                                />
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center justify-end gap-2 pt-3 border-t border-stone-200">
-                            <button
-                              type="button"
-                              onClick={() => setIsAddStaffOpen(false)}
-                              className="px-4 py-2 text-xs font-semibold text-stone-600 hover:text-stone-900 bg-stone-100 hover:bg-stone-200 rounded transition-colors"
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              type="submit"
-                              className="px-4 py-2 text-xs font-bold text-stone-900 bg-[#D4AF37] hover:bg-[#E5BE4A] rounded transition-colors shadow-xs"
-                            >
-                              Add to Masthead Roster
-                            </button>
-                          </div>
-                        </form>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* MODAL 2: EDIT EDITORIAL BOARD MEMBER */}
-                  {editingStaff && (
-                    <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-                      <div className="bg-white rounded-lg shadow-2xl border border-stone-200 w-full max-w-lg overflow-hidden">
-                        <div className="bg-[#0B2545] text-white px-5 py-3.5 flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Edit3 className="w-4 h-4 text-[#D4AF37]" />
-                            <h4 className="font-serif font-bold text-base">
-                              Edit Editorial Board Member
-                            </h4>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setEditingStaff(null)}
-                            className="p-1 rounded text-stone-300 hover:text-white"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-
-                        <form onSubmit={handleSaveEditStaffMember} className="p-5 space-y-4">
-                          <div>
-                            <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1">
-                              Full Name *
-                            </label>
-                            <input
-                              type="text"
-                              required
-                              value={editStaffName}
-                              onChange={(e) => setEditStaffName(e.target.value)}
-                              className="w-full px-3 py-2 text-sm border border-stone-300 rounded focus:ring-1 focus:ring-[#0B2545] focus:outline-none"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1">
-                              Editorial Role / Position *
-                            </label>
-                            <input
-                              type="text"
-                              required
-                              value={editStaffRole}
-                              onChange={(e) => setEditStaffRole(e.target.value)}
-                              className="w-full px-3 py-2 text-sm border border-stone-300 rounded focus:ring-1 focus:ring-[#0B2545] focus:outline-none"
-                            />
-                            <div className="flex flex-wrap gap-1.5 mt-2">
-                              {[
-                                'Publication Adviser',
-                                'Editor-in-Chief',
-                                'Associate Editor',
-                                'Managing Editor',
-                                'News Editor',
-                                'Features Editor',
-                                'Opinion Editor',
-                                'Sports Editor',
-                                'Chief Photojournalist',
-                                'Staff Writer',
-                              ].map((rolePreset) => (
-                                <button
-                                  key={rolePreset}
-                                  type="button"
-                                  onClick={() => setEditStaffRole(rolePreset)}
-                                  className={`px-2 py-0.5 text-[11px] rounded border transition-colors ${
-                                    editStaffRole === rolePreset
-                                      ? 'bg-[#0B2545] text-white border-[#0B2545]'
-                                      : 'bg-stone-50 text-stone-600 border-stone-200 hover:bg-stone-100'
-                                  }`}
-                                >
-                                  {rolePreset}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <div>
-                              <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1">
-                                Grade Level / Designation *
-                              </label>
-                              <input
-                                type="text"
-                                required
-                                value={editStaffGrade}
-                                onChange={(e) => setEditStaffGrade(e.target.value)}
-                                className="w-full px-3 py-2 text-sm border border-stone-300 rounded focus:ring-1 focus:ring-[#0B2545] focus:outline-none"
-                              />
-                            </div>
-
-                            <div>
-                              <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1">
-                                Department / Desk Assignment *
-                              </label>
-                              <input
-                                type="text"
-                                required
-                                value={editStaffDept}
-                                onChange={(e) => setEditStaffDept(e.target.value)}
-                                className="w-full px-3 py-2 text-sm border border-stone-300 rounded focus:ring-1 focus:ring-[#0B2545] focus:outline-none"
-                              />
-                            </div>
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1">
-                              Profile Photo (Optional)
-                            </label>
-                            <div className="flex items-center gap-3">
-                              {editStaffPhoto ? (
-                                <img
-                                  src={editStaffPhoto}
-                                  alt="Preview"
-                                  className="w-11 h-11 rounded-full object-cover border border-[#D4AF37] shrink-0"
-                                />
-                              ) : (
-                                <div className="w-11 h-11 rounded-full bg-[#0B2545] text-white flex items-center justify-center font-bold text-xs shrink-0">
-                                  {(editStaffName || 'IN')
-                                    .split(' ')
-                                    .filter(Boolean)
-                                    .map((n) => n[0])
-                                    .join('')
-                                    .slice(0, 2)
-                                    .toUpperCase()}
-                                </div>
-                              )}
-                              <div className="flex-1 space-y-1.5">
-                                <div className="flex items-center gap-2">
-                                  <label className="px-3 py-1.5 text-xs font-semibold bg-stone-100 hover:bg-stone-200 text-stone-700 rounded cursor-pointer transition-colors inline-flex items-center gap-1.5">
-                                    <Upload className="w-3.5 h-3.5" />
-                                    <span>Change Photo</span>
-                                    <input
-                                      type="file"
-                                      accept="image/*"
-                                      onChange={(e) => handleStaffPhotoUpload(e, true)}
-                                      className="hidden"
-                                    />
-                                  </label>
-                                  {editStaffPhoto && (
-                                    <button
-                                      type="button"
-                                      onClick={() => setEditStaffPhoto('')}
-                                      className="text-xs text-red-600 hover:underline"
-                                    >
-                                      Remove Photo
-                                    </button>
-                                  )}
-                                </div>
-                                <input
-                                  type="text"
-                                  value={editStaffPhoto}
-                                  onChange={(e) => setEditStaffPhoto(e.target.value)}
-                                  placeholder="Or paste image URL..."
-                                  className="w-full px-2.5 py-1 text-xs border border-stone-200 rounded focus:outline-none focus:border-stone-400"
-                                />
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center justify-end gap-2 pt-3 border-t border-stone-200">
-                            <button
-                              type="button"
-                              onClick={() => setEditingStaff(null)}
-                              className="px-4 py-2 text-xs font-semibold text-stone-600 hover:text-stone-900 bg-stone-100 hover:bg-stone-200 rounded transition-colors"
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              type="submit"
-                              className="px-4 py-2 text-xs font-bold text-white bg-[#0B2545] hover:bg-[#133E87] rounded transition-colors shadow-xs"
-                            >
-                              Save Changes
-                            </button>
-                          </div>
-                        </form>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* MODAL 3: DELETE STAFF CONFIRMATION */}
-                  {deletingStaff && (
-                    <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-                      <div className="bg-white rounded-lg shadow-2xl border border-stone-200 w-full max-w-md p-6 space-y-4">
-                        <div className="flex items-center gap-3 text-red-700">
-                          <AlertTriangle className="w-6 h-6 shrink-0" />
-                          <h4 className="font-serif font-bold text-lg text-stone-900">
-                            Remove Member from Masthead Roster?
-                          </h4>
-                        </div>
-                        <p className="text-xs text-stone-600 leading-relaxed">
-                          Are you sure you want to remove{' '}
-                          <strong className="text-stone-900">{deletingStaff.name}</strong> (
-                          {deletingStaff.role}) from The Inkspirer Editorial Board & Masthead Roster?
-                        </p>
-                        <div className="flex items-center justify-end gap-2 pt-2">
-                          <button
-                            type="button"
-                            onClick={() => setDeletingStaff(null)}
-                            className="px-4 py-2 text-xs font-semibold text-stone-600 bg-stone-100 hover:bg-stone-200 rounded transition-colors"
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleConfirmDeleteStaff}
-                            className="px-4 py-2 text-xs font-bold text-white bg-red-600 hover:bg-red-700 rounded transition-colors"
-                          >
-                            Confirm Remove
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
 
@@ -4290,8 +4042,33 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                           </h4>
                         </div>
                       </div>
-                      <div className="text-xs text-amber-200 font-mono">
-                        Appointed: {activeAdviserConfig.appointedDate}
+                      <div className="flex items-center gap-3">
+                        <div className="text-xs text-amber-200 font-mono">
+                          Appointed: {activeAdviserConfig.appointedDate}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const matchingMember = staff.find(
+                              (m) =>
+                                m.id === activeAdviserConfig.id ||
+                                m.name.toLowerCase() === activeAdviserConfig.name.toLowerCase()
+                            ) || {
+                              id: activeAdviserConfig.id,
+                              name: activeAdviserConfig.name,
+                              role: activeAdviserConfig.role,
+                              gradeOrDesignation: activeAdviserConfig.designation,
+                              department: activeAdviserConfig.department,
+                              email: activeAdviserConfig.email,
+                              photoUrl: activeAdviserConfig.photoUrl,
+                            };
+                            handleOpenEditStaff(matchingMember);
+                          }}
+                          className="px-3 py-1.5 text-xs font-bold text-[#0B2545] bg-[#D4AF37] hover:bg-[#E5BE4A] rounded transition-colors inline-flex items-center gap-1.5 shadow-xs cursor-pointer"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                          <span>Edit Profile</span>
+                        </button>
                       </div>
                     </div>
 
@@ -4408,12 +4185,12 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                                 <div className="text-xs text-stone-500">{adv.gradeOrDesignation}</div>
                               </div>
 
-                              <div className="flex items-center gap-1.5">
+                              <div className="flex items-center gap-1.5 shrink-0">
                                 {!isCurrent && (
                                   <button
                                     type="button"
                                     onClick={() => handleSetMemberAsActiveAdviser(adv)}
-                                    className="px-2.5 py-1.5 text-xs font-bold text-white bg-[#0B2545] hover:bg-[#133E87] rounded transition-colors"
+                                    className="px-2.5 py-1.5 text-xs font-bold text-white bg-[#0B2545] hover:bg-[#133E87] rounded transition-colors cursor-pointer"
                                   >
                                     Make Active Adviser
                                   </button>
@@ -4421,9 +4198,10 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => handleOpenEditStaff(adv)}
-                                  className="px-2.5 py-1.5 text-xs font-semibold text-stone-700 bg-stone-100 hover:bg-stone-200 rounded transition-colors"
+                                  className="px-3 py-1.5 text-xs font-bold text-[#0B2545] bg-[#D4AF37]/20 hover:bg-[#D4AF37]/35 border border-[#D4AF37] rounded transition-colors inline-flex items-center gap-1.5 cursor-pointer"
                                 >
-                                  Edit
+                                  <Edit3 className="w-3.5 h-3.5 text-[#4A0E17]" />
+                                  <span>Edit</span>
                                 </button>
                               </div>
                             </div>
@@ -4468,6 +4246,440 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                         ))}
                       </div>
                     )}
+                  </div>
+                </div>
+              )}
+
+              {/* SHARED MODAL 1: ADD EDITORIAL BOARD MEMBER */}
+              {isAddStaffOpen && (
+                <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+                  <div className="bg-white rounded-lg shadow-2xl border border-stone-200 w-full max-w-lg overflow-hidden">
+                    <div className="bg-[#0B2545] text-white px-5 py-3.5 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Users className="w-4 h-4 text-[#D4AF37]" />
+                        <h4 className="font-serif font-bold text-base">
+                          Add Member to Editorial Board & Masthead Roster
+                        </h4>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsAddStaffOpen(false)}
+                        className="p-1 rounded text-stone-300 hover:text-white"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <form onSubmit={handleCreateStaffMember} className="p-5 space-y-4">
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1">
+                          Full Name *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={newStaffName}
+                          onChange={(e) => setNewStaffName(e.target.value)}
+                          placeholder="e.g., Princess Mae S. Urbiztondo"
+                          className="w-full px-3 py-2 text-sm border border-stone-300 rounded focus:ring-1 focus:ring-[#0B2545] focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1">
+                          Editorial Role / Position *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={newStaffRole}
+                          onChange={(e) => setNewStaffRole(e.target.value)}
+                          placeholder="e.g., Managing Editor, News Editor, Photojournalist"
+                          className="w-full px-3 py-2 text-sm border border-stone-300 rounded focus:ring-1 focus:ring-[#0B2545] focus:outline-none"
+                        />
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          {[
+                            'Publication Adviser',
+                            'Editor-in-Chief',
+                            'Associate Editor',
+                            'Managing Editor',
+                            'News Editor',
+                            'Features Editor',
+                            'Opinion Editor',
+                            'Sports Editor',
+                            'Chief Photojournalist',
+                            'Staff Writer',
+                          ].map((rolePreset) => (
+                            <button
+                              key={rolePreset}
+                              type="button"
+                              onClick={() => setNewStaffRole(rolePreset)}
+                              className={`px-2 py-0.5 text-[11px] rounded border transition-colors ${
+                                newStaffRole === rolePreset
+                                  ? 'bg-[#0B2545] text-white border-[#0B2545]'
+                                  : 'bg-stone-50 text-stone-600 border-stone-200 hover:bg-stone-100'
+                              }`}
+                            >
+                              {rolePreset}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1">
+                            Grade Level / Designation *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={newStaffGrade}
+                            onChange={(e) => setNewStaffGrade(e.target.value)}
+                            placeholder="e.g., Grade 12 HUMSS or Master Teacher II"
+                            className="w-full px-3 py-2 text-sm border border-stone-300 rounded focus:ring-1 focus:ring-[#0B2545] focus:outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1">
+                            Department / Desk Assignment *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={newStaffDept}
+                            onChange={(e) => setNewStaffDept(e.target.value)}
+                            placeholder="e.g., News & Public Affairs Desk"
+                            className="w-full px-3 py-2 text-sm border border-stone-300 rounded focus:ring-1 focus:ring-[#0B2545] focus:outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1">
+                          Profile Photo (Optional)
+                        </label>
+                        <div className="flex items-center gap-3">
+                          {newStaffPhoto ? (
+                            <img
+                              src={newStaffPhoto}
+                              alt="Preview"
+                              className="w-11 h-11 rounded-full object-cover border border-[#D4AF37] shrink-0"
+                            />
+                          ) : (
+                            <div className="w-11 h-11 rounded-full bg-[#0B2545] text-white flex items-center justify-center font-bold text-xs shrink-0">
+                              {(newStaffName || 'IN')
+                                .split(' ')
+                                .filter(Boolean)
+                                .map((n) => n[0])
+                                .join('')
+                                .slice(0, 2)
+                                .toUpperCase()}
+                            </div>
+                          )}
+                          <div className="flex-1 space-y-1.5">
+                            <div className="flex items-center gap-2">
+                              <label className="px-3 py-1.5 text-xs font-semibold bg-stone-100 hover:bg-stone-200 text-stone-700 rounded cursor-pointer transition-colors inline-flex items-center gap-1.5">
+                                <Upload className="w-3.5 h-3.5" />
+                                <span>Upload Photo</span>
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  onChange={(e) => handleStaffPhotoUpload(e, false)}
+                                  className="hidden"
+                                />
+                              </label>
+                              {newStaffPhoto && (
+                                <button
+                                  type="button"
+                                  onClick={() => setNewStaffPhoto('')}
+                                  className="text-xs text-red-600 hover:underline"
+                                >
+                                  Clear Photo
+                                </button>
+                              )}
+                            </div>
+                            <input
+                              type="text"
+                              value={newStaffPhoto}
+                              onChange={(e) => setNewStaffPhoto(e.target.value)}
+                              placeholder="Or paste image URL..."
+                              className="w-full px-2.5 py-1 text-xs border border-stone-200 rounded focus:outline-none focus:border-stone-400"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-end gap-2 pt-3 border-t border-stone-200">
+                        <button
+                          type="button"
+                          onClick={() => setIsAddStaffOpen(false)}
+                          className="px-4 py-2 text-xs font-semibold text-stone-600 hover:text-stone-900 bg-stone-100 hover:bg-stone-200 rounded transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          className="px-4 py-2 text-xs font-bold text-stone-900 bg-[#D4AF37] hover:bg-[#E5BE4A] rounded transition-colors shadow-xs"
+                        >
+                          Add to Masthead Roster
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
+
+              {/* SHARED MODAL 2: EDIT EDITORIAL BOARD MEMBER OR PORTAL ADVISER */}
+              {editingStaff && (
+                <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+                  <div className="bg-white rounded-lg shadow-2xl border border-stone-200 w-full max-w-lg overflow-hidden">
+                    <div className="bg-[#0B2545] text-white px-5 py-3.5 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Edit3 className="w-4 h-4 text-[#D4AF37]" />
+                        <h4 className="font-serif font-bold text-base">
+                          {editingStaff.role.toLowerCase().includes('adviser') ||
+                          editingStaff.role.toLowerCase().includes('consultant') ||
+                          editingStaff.id === activeAdviserConfig.id
+                            ? 'Edit Portal Adviser / Faculty Consultant'
+                            : 'Edit Editorial Board Member'}
+                        </h4>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setEditingStaff(null)}
+                        className="p-1 rounded text-stone-300 hover:text-white"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <form onSubmit={handleSaveEditStaffMember} className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1">
+                          Full Name *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={editStaffName}
+                          onChange={(e) => setEditStaffName(e.target.value)}
+                          className="w-full px-3 py-2 text-sm border border-stone-300 rounded focus:ring-1 focus:ring-[#0B2545] focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1">
+                          Editorial Role / Position *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={editStaffRole}
+                          onChange={(e) => setEditStaffRole(e.target.value)}
+                          className="w-full px-3 py-2 text-sm border border-stone-300 rounded focus:ring-1 focus:ring-[#0B2545] focus:outline-none"
+                        />
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          {[
+                            'School Publication Adviser',
+                            'Publication Adviser',
+                            'Co-Adviser & Editorial Consultant',
+                            'Editor-in-Chief',
+                            'Associate Editor',
+                            'Managing Editor',
+                            'News Editor',
+                            'Features Editor',
+                            'Opinion Editor',
+                            'Sports Editor',
+                            'Chief Photojournalist',
+                            'Staff Writer',
+                          ].map((rolePreset) => (
+                            <button
+                              key={rolePreset}
+                              type="button"
+                              onClick={() => setEditStaffRole(rolePreset)}
+                              className={`px-2 py-0.5 text-[11px] rounded border transition-colors ${
+                                editStaffRole === rolePreset
+                                  ? 'bg-[#0B2545] text-white border-[#0B2545]'
+                                  : 'bg-stone-50 text-stone-600 border-stone-200 hover:bg-stone-100'
+                              }`}
+                            >
+                              {rolePreset}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1">
+                            Grade Level / Faculty Rank *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={editStaffGrade}
+                            onChange={(e) => setEditStaffGrade(e.target.value)}
+                            className="w-full px-3 py-2 text-sm border border-stone-300 rounded focus:ring-1 focus:ring-[#0B2545] focus:outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1">
+                            Department / Desk Assignment *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={editStaffDept}
+                            onChange={(e) => setEditStaffDept(e.target.value)}
+                            className="w-full px-3 py-2 text-sm border border-stone-300 rounded focus:ring-1 focus:ring-[#0B2545] focus:outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      {(editingStaff.role.toLowerCase().includes('adviser') ||
+                        editingStaff.role.toLowerCase().includes('consultant') ||
+                        editingStaff.id === activeAdviserConfig.id ||
+                        editingStaff.name.toLowerCase() === activeAdviserConfig.name.toLowerCase()) && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-amber-50/60 p-3 rounded border border-amber-200">
+                          <div>
+                            <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1">
+                              Official DepEd / Portal Email
+                            </label>
+                            <input
+                              type="email"
+                              value={editStaffEmail}
+                              onChange={(e) => setEditStaffEmail(e.target.value)}
+                              placeholder="adviser@bnhs.deped.edu.ph"
+                              className="w-full px-3 py-2 text-xs border border-stone-300 bg-white rounded focus:ring-1 focus:ring-[#0B2545] focus:outline-none"
+                            />
+                          </div>
+                          {(editingStaff.id === activeAdviserConfig.id ||
+                            editingStaff.name.toLowerCase() === activeAdviserConfig.name.toLowerCase()) && (
+                            <div>
+                              <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1">
+                                Portal Adviser Access PIN
+                              </label>
+                              <input
+                                type="text"
+                                value={editStaffPin}
+                                onChange={(e) => setEditStaffPin(e.target.value)}
+                                placeholder="e.g., 1991"
+                                className="w-full px-3 py-2 text-xs font-mono border border-stone-300 bg-white rounded focus:ring-1 focus:ring-[#0B2545] focus:outline-none"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1">
+                          Profile Photo (Optional)
+                        </label>
+                        <div className="flex items-center gap-3">
+                          {editStaffPhoto ? (
+                            <img
+                              src={editStaffPhoto}
+                              alt="Preview"
+                              className="w-11 h-11 rounded-full object-cover border border-[#D4AF37] shrink-0"
+                            />
+                          ) : (
+                            <div className="w-11 h-11 rounded-full bg-[#0B2545] text-white flex items-center justify-center font-bold text-xs shrink-0">
+                              {(editStaffName || 'IN')
+                                .split(' ')
+                                .filter(Boolean)
+                                .map((n) => n[0])
+                                .join('')
+                                .slice(0, 2)
+                                .toUpperCase()}
+                            </div>
+                          )}
+                          <div className="flex-1 space-y-1.5">
+                            <div className="flex items-center gap-2">
+                              <label className="px-3 py-1.5 text-xs font-semibold bg-stone-100 hover:bg-stone-200 text-stone-700 rounded cursor-pointer transition-colors inline-flex items-center gap-1.5">
+                                <Upload className="w-3.5 h-3.5" />
+                                <span>Change Photo</span>
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  onChange={(e) => handleStaffPhotoUpload(e, true)}
+                                  className="hidden"
+                                />
+                              </label>
+                              {editStaffPhoto && (
+                                <button
+                                  type="button"
+                                  onClick={() => setEditStaffPhoto('')}
+                                  className="text-xs text-red-600 hover:underline"
+                                >
+                                  Remove Photo
+                                </button>
+                              )}
+                            </div>
+                            <input
+                              type="text"
+                              value={editStaffPhoto}
+                              onChange={(e) => setEditStaffPhoto(e.target.value)}
+                              placeholder="Or paste image URL..."
+                              className="w-full px-2.5 py-1 text-xs border border-stone-200 rounded focus:outline-none focus:border-stone-400"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-end gap-2 pt-3 border-t border-stone-200">
+                        <button
+                          type="button"
+                          onClick={() => setEditingStaff(null)}
+                          className="px-4 py-2 text-xs font-semibold text-stone-600 hover:text-stone-900 bg-stone-100 hover:bg-stone-200 rounded transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          className="px-4 py-2 text-xs font-bold text-white bg-[#0B2545] hover:bg-[#133E87] rounded transition-colors shadow-xs"
+                        >
+                          Save Changes
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
+
+              {/* SHARED MODAL 3: DELETE STAFF CONFIRMATION */}
+              {deletingStaff && (
+                <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+                  <div className="bg-white rounded-lg shadow-2xl border border-stone-200 w-full max-w-md p-6 space-y-4">
+                    <div className="flex items-center gap-3 text-red-700">
+                      <AlertTriangle className="w-6 h-6 shrink-0" />
+                      <h4 className="font-serif font-bold text-lg text-stone-900">
+                        Remove Member from Masthead Roster?
+                      </h4>
+                    </div>
+                    <p className="text-xs text-stone-600 leading-relaxed">
+                      Are you sure you want to remove{' '}
+                      <strong className="text-stone-900">{deletingStaff.name}</strong> (
+                      {deletingStaff.role}) from The Inkspirer Editorial Board & Masthead Roster?
+                    </p>
+                    <div className="flex items-center justify-end gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setDeletingStaff(null)}
+                        className="px-4 py-2 text-xs font-semibold text-stone-600 bg-stone-100 hover:bg-stone-200 rounded transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleConfirmDeleteStaff}
+                        className="px-4 py-2 text-xs font-bold text-white bg-red-600 hover:bg-red-700 rounded transition-colors"
+                      >
+                        Confirm Remove
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}

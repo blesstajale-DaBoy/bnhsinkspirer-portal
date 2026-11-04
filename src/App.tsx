@@ -316,6 +316,8 @@ export default function App() {
         isOpen={isSubmitOpen}
         onClose={() => setIsSubmitOpen(false)}
         onSubmit={addSubmission}
+        onPublishSubmission={publishSubmissionAsArticle}
+        onViewArticle={handleSelectArticle}
         onOpenEditorialDesk={() => setIsEditorialDeskOpen(true)}
         categories={categories}
       />
@@ -361,6 +363,7 @@ export default function App() {
         onAddAuthorProfile={addAuthorProfile}
         onUpdateAuthorProfile={updateAuthorProfile}
         onDeleteAuthorProfile={deleteAuthorProfile}
+        onViewArticle={handleSelectArticle}
         onResetDefaults={resetToDefaults}
       />
     </div>

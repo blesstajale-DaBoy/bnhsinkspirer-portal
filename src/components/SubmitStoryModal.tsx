@@ -9,13 +9,15 @@ import {
   HelpCircle,
   Sparkles,
 } from 'lucide-react';
-import { Category, StorySubmission, PublicationCategory } from '../types';
+import { Category, StorySubmission, PublicationCategory, Article } from '../types';
 import { downloadSubmissionTextFile } from '../utils/exporter';
 
 interface SubmitStoryModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (data: Omit<StorySubmission, 'id' | 'submittedAt' | 'status'>) => StorySubmission;
+  onPublishSubmission?: (submissionId: string) => Article | null;
+  onViewArticle?: (article: Article) => void;
   onOpenEditorialDesk: () => void;
   categories?: PublicationCategory[];
 }
@@ -24,6 +26,8 @@ export const SubmitStoryModal: React.FC<SubmitStoryModalProps> = ({
   isOpen,
   onClose,
   onSubmit,
+  onPublishSubmission,
+  onViewArticle,
   onOpenEditorialDesk,
   categories,
 }) => {
@@ -37,6 +41,7 @@ export const SubmitStoryModal: React.FC<SubmitStoryModalProps> = ({
   const [notesToEditor, setNotesToEditor] = useState('');
   const [submittedSuccessfully, setSubmittedSuccessfully] = useState(false);
   const [lastSubmission, setLastSubmission] = useState<StorySubmission | null>(null);
+  const [publishedArticle, setPublishedArticle] = useState<Article | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
 
   if (!isOpen) return null;
@@ -75,23 +80,52 @@ export const SubmitStoryModal: React.FC<SubmitStoryModalProps> = ({
 
   const handleSubmitToDesk = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!studentName.trim() || !headline.trim() || !content.trim()) {
-      setErrorMsg('Please fill in your name, headline, and article story.');
+    if (!headline.trim() || !content.trim()) {
+      setErrorMsg('Please fill in your proposed headline and article story.');
       return;
     }
 
     const created = onSubmit({
-      studentName,
-      gradeSection: gradeSection || 'BNHS Student Contributor',
-      email: email || 'student@bnhs.deped.edu.ph',
+      studentName: studentName.trim() || 'BNHS Campus Journalist',
+      gradeSection: gradeSection.trim() || 'BNHS Student Contributor',
+      email: email.trim() || 'student@bnhs.deped.edu.ph',
       category,
-      headline,
-      summary: summary || headline,
-      content,
-      notesToEditor,
+      headline: headline.trim(),
+      summary: summary.trim() || headline.trim(),
+      content: content.trim(),
+      notesToEditor: notesToEditor.trim(),
     });
 
     setLastSubmission(created);
+    setPublishedArticle(null);
+    setSubmittedSuccessfully(true);
+    setErrorMsg('');
+  };
+
+  const handlePublishDirectly = () => {
+    if (!headline.trim() || !content.trim()) {
+      setErrorMsg('Please fill in your proposed headline and article story before publishing.');
+      return;
+    }
+
+    const created = onSubmit({
+      studentName: studentName.trim() || 'BNHS Campus Journalist',
+      gradeSection: gradeSection.trim() || 'BNHS Student Contributor',
+      email: email.trim() || 'student@bnhs.deped.edu.ph',
+      category,
+      headline: headline.trim(),
+      summary: summary.trim() || headline.trim(),
+      content: content.trim(),
+      notesToEditor: notesToEditor.trim(),
+    });
+
+    setLastSubmission(created);
+    if (onPublishSubmission) {
+      const art = onPublishSubmission(created.id);
+      if (art) {
+        setPublishedArticle(art);
+      }
+    }
     setSubmittedSuccessfully(true);
     setErrorMsg('');
   };
@@ -106,6 +140,7 @@ export const SubmitStoryModal: React.FC<SubmitStoryModalProps> = ({
     setNotesToEditor('');
     setSubmittedSuccessfully(false);
     setLastSubmission(null);
+    setPublishedArticle(null);
     setErrorMsg('');
   };
 
@@ -146,12 +181,23 @@ export const SubmitStoryModal: React.FC<SubmitStoryModalProps> = ({
               </div>
 
               <h3 className="font-serif text-2xl font-bold text-stone-900">
-                Manuscript Received by Editorial Desk!
+                {publishedArticle
+                  ? 'Story Published Live to The Inkspirer!'
+                  : 'Manuscript Received by Editorial Desk!'}
               </h3>
 
               <p className="text-sm text-stone-600 max-w-md mx-auto leading-relaxed">
-                Thank you, <strong>{lastSubmission.studentName}</strong>! Your proposed {lastSubmission.category} article titled{' '}
-                <strong className="text-stone-800">“{lastSubmission.headline}”</strong> has been registered in The Inkspirer’s editorial review system.
+                {publishedArticle ? (
+                  <>
+                    Congratulations, <strong>{lastSubmission.studentName}</strong>! Your {lastSubmission.category} article{' '}
+                    <strong className="text-stone-800">“{lastSubmission.headline}”</strong> is now live on The Inkspirer portal.
+                  </>
+                ) : (
+                  <>
+                    Thank you, <strong>{lastSubmission.studentName}</strong>! Your proposed {lastSubmission.category} article titled{' '}
+                    <strong className="text-stone-800">“{lastSubmission.headline}”</strong> has been registered in The Inkspirer’s editorial review system.
+                  </>
+                )}
               </p>
 
               <div className="bg-stone-50 border border-stone-200 rounded p-4 max-w-md mx-auto text-left text-xs space-y-2">
@@ -161,9 +207,15 @@ export const SubmitStoryModal: React.FC<SubmitStoryModalProps> = ({
                 </div>
                 <div className="flex justify-between">
                   <span className="text-stone-500">Status:</span>
-                  <span className="font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                    Pending Editorial Review
-                  </span>
+                  {publishedArticle ? (
+                    <span className="font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                      Approved & Published Live
+                    </span>
+                  ) : (
+                    <span className="font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                      Pending Editorial Review
+                    </span>
+                  )}
                 </div>
                 <div className="flex justify-between">
                   <span className="text-stone-500">Publication Adviser:</span>
@@ -172,26 +224,59 @@ export const SubmitStoryModal: React.FC<SubmitStoryModalProps> = ({
               </div>
 
               <div className="pt-4 flex flex-wrap items-center justify-center gap-3">
+                {publishedArticle && onViewArticle ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onViewArticle(publishedArticle);
+                    }}
+                    className="px-4 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Read Published Story Now</span>
+                  </button>
+                ) : (
+                  onPublishSubmission && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const art = onPublishSubmission(lastSubmission.id);
+                        if (art) {
+                          setPublishedArticle(art);
+                        }
+                      }}
+                      className="px-4 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Publish Now to Live Portal</span>
+                    </button>
+                  )
+                )}
+
                 <button
+                  type="button"
                   onClick={handleDownloadTxt}
-                  className="px-4 py-2 text-xs font-semibold text-stone-700 bg-stone-100 hover:bg-stone-200 rounded transition-colors flex items-center gap-1.5"
+                  className="px-4 py-2 text-xs font-semibold text-stone-700 bg-stone-100 hover:bg-stone-200 rounded transition-colors flex items-center gap-1.5 cursor-pointer"
                 >
                   <Download className="w-4 h-4 text-stone-600" />
-                  <span>Download Backup Manuscript (.txt)</span>
+                  <span>Download Backup (.txt)</span>
                 </button>
 
                 <button
+                  type="button"
                   onClick={() => {
                     onClose();
                     onOpenEditorialDesk();
                   }}
-                  className="px-4 py-2 text-xs font-semibold text-white bg-[#0B2545] hover:bg-[#133E87] rounded transition-colors flex items-center gap-1.5"
+                  className="px-4 py-2 text-xs font-semibold text-white bg-[#0B2545] hover:bg-[#133E87] rounded transition-colors flex items-center gap-1.5 cursor-pointer"
                 >
-                  <span>Open Editorial Desk to Review & Publish</span>
+                  <span>Open Editorial Desk</span>
                 </button>
               </div>
 
               <button
+                type="button"
                 onClick={handleResetForm}
                 className="text-xs text-stone-500 hover:underline pt-2"
               >
@@ -367,22 +452,33 @@ export const SubmitStoryModal: React.FC<SubmitStoryModalProps> = ({
                   <span>Download .txt File</span>
                 </button>
 
-                <div className="flex items-center gap-2 w-full sm:w-auto">
+                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
                   <button
                     type="button"
                     onClick={onClose}
-                    className="w-1/2 sm:w-auto px-4 py-2.5 text-xs font-medium text-stone-600 hover:text-stone-900 rounded transition-colors"
+                    className="px-4 py-2.5 text-xs font-medium text-stone-600 hover:text-stone-900 rounded transition-colors"
                   >
                     Cancel
                   </button>
 
                   <button
                     type="submit"
-                    className="w-1/2 sm:w-auto px-5 py-2.5 text-xs font-semibold text-white bg-[#0B2545] hover:bg-[#133E87] rounded transition-colors flex items-center justify-center gap-2 shadow-xs"
+                    className="px-4 py-2.5 text-xs font-semibold text-[#0B2545] bg-stone-100 hover:bg-stone-200 border border-stone-300 rounded transition-colors flex items-center justify-center gap-1.5"
                   >
                     <Send className="w-3.5 h-3.5" />
-                    <span>Submit to Editorial Desk</span>
+                    <span>Submit to Queue</span>
                   </button>
+
+                  {onPublishSubmission && (
+                    <button
+                      type="button"
+                      onClick={handlePublishDirectly}
+                      className="px-5 py-2.5 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Publish Live Now</span>
+                    </button>
+                  )}
                 </div>
               </div>
             </form>
