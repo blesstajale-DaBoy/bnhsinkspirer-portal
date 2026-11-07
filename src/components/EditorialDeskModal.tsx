@@ -413,10 +413,17 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
     }
   });
 
-  // Sync active adviser name/details if edited in the staff roster
+  // Sync active adviser name/details/photoUrl if edited in the staff roster
   useEffect(() => {
     const primaryInRoster =
       staff.find((m) => m.id === activeAdviserConfig.id) ||
+      staff.find(
+        (m) =>
+          m.name.trim().toLowerCase() === activeAdviserConfig.name.trim().toLowerCase() &&
+          !m.role.toLowerCase().includes('former') &&
+          !m.role.toLowerCase().includes('emeritus') &&
+          !m.role.toLowerCase().includes('resigned')
+      ) ||
       staff.find(
         (m) =>
           (m.role.toLowerCase().includes('adviser') || m.role.toLowerCase().includes('consultant')) &&
@@ -424,19 +431,29 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
           !m.role.toLowerCase().includes('emeritus') &&
           !m.role.toLowerCase().includes('resigned')
       );
-    if (primaryInRoster && primaryInRoster.name !== activeAdviserConfig.name && primaryInRoster.id === activeAdviserConfig.id) {
+    if (
+      primaryInRoster &&
+      (primaryInRoster.name !== activeAdviserConfig.name ||
+        primaryInRoster.photoUrl !== activeAdviserConfig.photoUrl ||
+        primaryInRoster.role !== activeAdviserConfig.role ||
+        primaryInRoster.gradeOrDesignation !== activeAdviserConfig.designation ||
+        primaryInRoster.department !== activeAdviserConfig.department) &&
+      (primaryInRoster.id === activeAdviserConfig.id ||
+        primaryInRoster.name.trim().toLowerCase() === activeAdviserConfig.name.trim().toLowerCase())
+    ) {
       const synced: PortalAdviserConfig = {
         ...activeAdviserConfig,
+        id: primaryInRoster.id,
         name: primaryInRoster.name,
         role: primaryInRoster.role,
         designation: primaryInRoster.gradeOrDesignation,
         department: primaryInRoster.department,
-        photoUrl: primaryInRoster.photoUrl,
+        photoUrl: primaryInRoster.photoUrl || activeAdviserConfig.photoUrl,
       };
       setActiveAdviserConfig(synced);
       localStorage.setItem('the_inkspirer_active_adviser_v1', JSON.stringify(synced));
     }
-  }, [staff]);
+  }, [staff, activeAdviserConfig]);
 
   // Modals for Portal Adviser Resignation / Handover & Adding Portal Adviser
   const [isResignModalOpen, setIsResignModalOpen] = useState(false);
@@ -4446,10 +4463,31 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                   {/* Active Portal Adviser Official Card */}
                   <div className="bg-white border-2 border-[#D4AF37] rounded-xl overflow-hidden shadow-md">
                     <div className="bg-linear-to-r from-[#34070E] via-[#4A0E17] to-[#0B2545] px-6 py-4 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-[#D4AF37]/20 border border-[#D4AF37] flex items-center justify-center text-[#F3C562]">
-                          <Shield className="w-5 h-5" />
-                        </div>
+                      <div className="flex items-center gap-3.5">
+                        {(() => {
+                          const rosterAdviser = staff.find(
+                            (m) =>
+                              m.id === activeAdviserConfig.id ||
+                              m.name.trim().toLowerCase() ===
+                                activeAdviserConfig.name.trim().toLowerCase()
+                          );
+                          const incumbentPhoto = normalizeImageUrl(
+                            activeAdviserConfig.photoUrl || rosterAdviser?.photoUrl
+                          );
+                          return incumbentPhoto ? (
+                            <img
+                              src={incumbentPhoto}
+                              alt={activeAdviserConfig.name}
+                              referrerPolicy="no-referrer"
+                              onError={handleImageErrorWithDriveFallback}
+                              className="w-12 h-12 rounded-full object-cover border-2 border-[#D4AF37] shadow-md shrink-0 bg-stone-800"
+                            />
+                          ) : (
+                            <div className="w-12 h-12 rounded-full bg-[#D4AF37]/20 border-2 border-[#D4AF37] flex items-center justify-center text-[#F3C562] shrink-0">
+                              <Shield className="w-5 h-5" />
+                            </div>
+                          );
+                        })()}
                         <div>
                           <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded bg-[#D4AF37] text-[#0B2545]">
                             Current Incumbent Portal Adviser
@@ -4569,6 +4607,9 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                             adv.role.toLowerCase().includes('former') ||
                             adv.role.toLowerCase().includes('emeritus') ||
                             adv.adviserStatus === 'emeritus';
+                          const advPhoto = normalizeImageUrl(
+                            adv.photoUrl || (isCurrent ? activeAdviserConfig.photoUrl : undefined)
+                          );
                           return (
                             <div
                               key={adv.id}
@@ -4578,29 +4619,50 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                                   : 'bg-white border-stone-200'
                               }`}
                             >
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <span className="font-bold text-sm text-stone-900">
-                                    {adv.name}
-                                  </span>
-                                  {isCurrent ? (
-                                    <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-900">
-                                      Active Primary
+                              <div className="flex items-center gap-3 min-w-0">
+                                {advPhoto ? (
+                                  <img
+                                    src={advPhoto}
+                                    alt={adv.name}
+                                    referrerPolicy="no-referrer"
+                                    onError={handleImageErrorWithDriveFallback}
+                                    className="w-11 h-11 rounded-full object-cover border-2 border-[#D4AF37] shrink-0"
+                                  />
+                                ) : (
+                                  <div className="w-11 h-11 rounded-full bg-[#4A0E17] text-[#F3C562] border-2 border-[#D4AF37] flex items-center justify-center font-bold text-xs shrink-0">
+                                    {adv.name
+                                      .split(' ')
+                                      .filter(Boolean)
+                                      .map((n) => n[0])
+                                      .join('')
+                                      .slice(0, 2)
+                                      .toUpperCase()}
+                                  </div>
+                                )}
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-bold text-sm text-stone-900 truncate">
+                                      {adv.name}
                                     </span>
-                                  ) : isEmeritus ? (
-                                    <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-stone-200 text-stone-700">
-                                      Resigned / Emeritus
-                                    </span>
-                                  ) : (
-                                    <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-blue-50 text-blue-800">
-                                      Co-Adviser
-                                    </span>
-                                  )}
+                                    {isCurrent ? (
+                                      <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-900">
+                                        Active Primary
+                                      </span>
+                                    ) : isEmeritus ? (
+                                      <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-stone-200 text-stone-700">
+                                        Resigned / Emeritus
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-blue-50 text-blue-800">
+                                        Co-Adviser
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-xs text-[#0B2545] font-semibold mt-0.5">
+                                    {adv.role}
+                                  </div>
+                                  <div className="text-xs text-stone-500">{adv.gradeOrDesignation}</div>
                                 </div>
-                                <div className="text-xs text-[#0B2545] font-semibold mt-0.5">
-                                  {adv.role}
-                                </div>
-                                <div className="text-xs text-stone-500">{adv.gradeOrDesignation}</div>
                               </div>
 
                               <div className="flex items-center gap-1.5 shrink-0">
