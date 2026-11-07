@@ -5,6 +5,7 @@ import { Navbar } from './components/Navbar';
 import { Masthead } from './components/Masthead';
 import { CampusBulletin } from './components/CampusBulletin';
 import { StoryFilter } from './components/StoryFilter';
+import { CategoryStorySlider } from './components/CategoryStorySlider';
 import { LeadStory } from './components/LeadStory';
 import { StoryGrid } from './components/StoryGrid';
 import { ArticleReaderModal } from './components/ArticleReaderModal';
@@ -238,6 +239,16 @@ export default function App() {
           onOpenEditorialDesk={() => setIsEditorialDeskOpen(true)}
           categoriesList={categories}
         />
+
+        {/* 1000x500 Sliding Pictures Carousel in All Stories section between Menus and Front-Page Lead Story */}
+        {activeCategory === 'All' && !showingBookmarksOnly && !searchQuery.trim() && (
+          <CategoryStorySlider
+            articles={articles}
+            categories={categories}
+            onSelectArticle={handleSelectArticle}
+            onUpdateArticle={updateArticle}
+          />
+        )}
 
         {/* Lead Story Presentation (Editorial Salience Tier 1) */}
         {leadStory && (
