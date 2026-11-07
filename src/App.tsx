@@ -246,7 +246,6 @@ export default function App() {
             articles={articles}
             categories={categories}
             onSelectArticle={handleSelectArticle}
-            onUpdateArticle={updateArticle}
           />
         )}
 

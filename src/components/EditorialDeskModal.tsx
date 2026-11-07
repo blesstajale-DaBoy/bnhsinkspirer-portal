@@ -505,6 +505,12 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
   const [deskIssnAutoNotice, setDeskIssnAutoNotice] = useState(false);
   const [deskSyncLeadIssue, setDeskSyncLeadIssue] = useState(true);
 
+  // 1000x500 Category Slide Photo Upload Modal state (kept strictly above early return)
+  const [isUploadSlideModalOpen, setIsUploadSlideModalOpen] = useState(false);
+  const [slideModalCategory, setSlideModalCategory] = useState<string>('News');
+  const [slideModalPostId, setSlideModalPostId] = useState<string>('');
+  const [slideModalImageUrl, setSlideModalImageUrl] = useState<string>('');
+
   useEffect(() => {
     setDeskVolumeIssue(currentVolumeIssue);
     setDeskAcademicYear(currentAcademicYear);
@@ -522,6 +528,89 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
   ]);
 
   if (!isOpen) return null;
+
+  const handleOpenUploadSlideModal = () => {
+    const defaultCat = 'News';
+    const matchingPosts = articles.filter(
+      (a) => a.category.toLowerCase() === defaultCat.toLowerCase()
+    );
+    const initialPost = matchingPosts[0] || articles[0];
+    setSlideModalCategory(initialPost ? initialPost.category : defaultCat);
+    setSlideModalPostId(initialPost ? initialPost.id : '');
+    setSlideModalImageUrl(initialPost?.imageUrl || '');
+    setIsUploadSlideModalOpen(true);
+  };
+
+  const handleSlideCategoryChange = (catName: string) => {
+    setSlideModalCategory(catName);
+    const matchingPosts = articles.filter(
+      (a) => a.category.toLowerCase() === catName.toLowerCase()
+    );
+    if (matchingPosts.length > 0) {
+      setSlideModalPostId(matchingPosts[0].id);
+      setSlideModalImageUrl(matchingPosts[0].imageUrl || '');
+    } else {
+      setSlideModalPostId('');
+      setSlideModalImageUrl('');
+    }
+  };
+
+  const handleSlidePostChange = (postId: string) => {
+    setSlideModalPostId(postId);
+    const found = articles.find((a) => a.id === postId);
+    if (found) {
+      setSlideModalImageUrl(found.imageUrl || '');
+    }
+  };
+
+  const handleSlidePhotoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const targetWidth = 1000;
+        const targetHeight = 500;
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          const scale = Math.max(targetWidth / img.width, targetHeight / img.height);
+          const scaledWidth = img.width * scale;
+          const scaledHeight = img.height * scale;
+          const dx = (targetWidth - scaledWidth) / 2;
+          const dy = (targetHeight - scaledHeight) / 2;
+          ctx.drawImage(img, dx, dy, scaledWidth, scaledHeight);
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.84);
+          setSlideModalImageUrl(compressedDataUrl);
+        } else {
+          setSlideModalImageUrl(event.target?.result as string);
+        }
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveSlidePhotoFromDesk = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!slideModalPostId) {
+      showToast('Please select a post to attach the slide photo to.');
+      return;
+    }
+    const targetPost = articles.find((a) => a.id === slideModalPostId);
+    if (!targetPost) return;
+    const normalized = normalizeImageUrl(slideModalImageUrl);
+    onUpdateArticle({
+      ...targetPost,
+      imageUrl: normalized || undefined,
+    });
+    setIsUploadSlideModalOpen(false);
+    showToast(`Updated 1000×500 slide photo for "${targetPost.title}"!`);
+  };
 
   const handleDeskVolumeIssueChange = (newVolumeIssue: string) => {
     setDeskVolumeIssue(newVolumeIssue);
@@ -1553,6 +1642,16 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                 >
                   <Edit3 className="w-3.5 h-3.5 text-[#D4AF37]" />
                   <span>Edit Motto & Tagline</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleOpenUploadSlideModal}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-semibold bg-[#34070E]/90 hover:bg-[#5C1521] border border-[#D4AF37]/50 text-[#F3C562] transition-colors cursor-pointer"
+                  title="Upload or change the 1000×500 slide photo for News, Features, Opinion, or Sports posts"
+                >
+                  <Camera className="w-3.5 h-3.5 text-[#D4AF37]" />
+                  <span>Upload Slide Photo</span>
                 </button>
 
                 <button
@@ -2998,6 +3097,14 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                         <Edit3 className="w-3.5 h-3.5 text-[#D4AF37]" />
                         <span>Edit Motto & Tagline</span>
                       </button>
+                      <button
+                        type="button"
+                        onClick={handleOpenUploadSlideModal}
+                        className="px-3 py-1.5 text-xs font-bold text-[#F3C562] bg-[#4A0E17] hover:bg-[#5C1521] border border-[#681622] rounded-md transition-colors flex items-center gap-1.5 shadow-xs shrink-0 cursor-pointer"
+                      >
+                        <Camera className="w-3.5 h-3.5 text-[#D4AF37]" />
+                        <span>Upload Slide Photo</span>
+                      </button>
                     </div>
                   </div>
 
@@ -3398,6 +3505,15 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                       >
                         <Edit3 className="w-4 h-4 text-[#D4AF37]" />
                         <span>Edit Motto & Tagline</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleOpenUploadSlideModal}
+                        className="px-4 py-2 text-xs font-bold text-[#F3C562] bg-[#4A0E17] hover:bg-[#5C1521] border border-[#D4AF37]/50 rounded-md transition-colors flex items-center gap-2 shadow-xs shrink-0 cursor-pointer"
+                      >
+                        <Camera className="w-4 h-4 text-[#D4AF37]" />
+                        <span>Upload Slide Photo</span>
                       </button>
 
                       <button
@@ -6078,6 +6194,185 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                   >
                     <CheckCircle2 className="w-4 h-4 text-[#4A0E17]" />
                     <span>Save Motto & Description</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Dedicated Upload 1000x500 Category Slide Photo Modal inside Editorial Desk */}
+        {isUploadSlideModalOpen && (
+          <div
+            className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-stone-950/80 backdrop-blur-xs"
+            onClick={() => setIsUploadSlideModalOpen(false)}
+          >
+            <div
+              className="bg-[#FFFDF9] text-[#1C1917] w-full max-w-lg rounded-lg shadow-2xl border border-[#681622] overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="bg-[#4A0E17] text-white px-5 py-4 border-b border-[#34070E] flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <InkspirerLogo size="sm" />
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-[#F3C562]">
+                      The Inkspirer · 1000 × 500 Category Slideshow Menu
+                    </div>
+                    <h3 className="font-serif text-lg font-bold text-white flex items-center gap-2">
+                      <Camera className="w-4 h-4 text-[#D4AF37]" />
+                      <span>Upload 1000 × 500 Slide Picture</span>
+                    </h3>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsUploadSlideModalOpen(false)}
+                  className="p-1.5 rounded text-stone-300 hover:text-white hover:bg-[#5C1521] transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveSlidePhotoFromDesk} className="p-5 space-y-4 max-h-[82vh] overflow-y-auto text-xs">
+                {/* Step 1: Select Category */}
+                <div>
+                  <label className="block font-bold uppercase tracking-wider text-stone-800 mb-1.5">
+                    1. Select Category (News, Features, Opinion, Sports)
+                  </label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      'News',
+                      'Features',
+                      'Opinion',
+                      'Sports',
+                      ...categories
+                        .map((c) => c.name)
+                        .filter(
+                          (n) =>
+                            !['news', 'features', 'opinion', 'sports', 'announcements'].includes(
+                              n.toLowerCase()
+                            )
+                        ),
+                    ].map((catName) => {
+                      const active = slideModalCategory.toLowerCase() === catName.toLowerCase();
+                      return (
+                        <button
+                          key={catName}
+                          type="button"
+                          onClick={() => handleSlideCategoryChange(catName)}
+                          className={`px-3 py-1.5 rounded font-bold uppercase tracking-wider text-[11px] border transition-colors cursor-pointer ${
+                            active
+                              ? 'bg-[#4A0E17] text-[#F3C562] border-[#4A0E17]'
+                              : 'bg-stone-100 text-stone-700 border-stone-300 hover:bg-stone-200'
+                          }`}
+                        >
+                          {catName}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Step 2: Select Post in that Category */}
+                <div>
+                  <label className="block font-bold uppercase tracking-wider text-stone-800 mb-1.5">
+                    2. Link Slide Picture to Post ({slideModalCategory})
+                  </label>
+                  {articles.filter(
+                    (a) => a.category.toLowerCase() === slideModalCategory.toLowerCase()
+                  ).length > 0 ? (
+                    <select
+                      value={slideModalPostId}
+                      onChange={(e) => handleSlidePostChange(e.target.value)}
+                      className="w-full px-3 py-2 rounded border border-stone-300 bg-white text-stone-900 font-medium focus:outline-none focus:ring-2 focus:ring-[#4A0E17] focus:border-[#4A0E17]"
+                    >
+                      {articles
+                        .filter(
+                          (a) => a.category.toLowerCase() === slideModalCategory.toLowerCase()
+                        )
+                        .map((post) => (
+                          <option key={post.id} value={post.id}>
+                            {post.title}
+                          </option>
+                        ))}
+                    </select>
+                  ) : (
+                    <p className="text-stone-500 italic">
+                      No published posts found in {slideModalCategory}. Publish a story in this category first.
+                    </p>
+                  )}
+                </div>
+
+                {/* Step 3: Upload File or Paste Image URL / Google Drive Link */}
+                {slideModalPostId && (
+                  <div className="space-y-3">
+                    <label className="block font-bold uppercase tracking-wider text-stone-800">
+                      3. Upload Picture (1000 × 500) or Paste Image / Google Drive Link
+                    </label>
+
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <label className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded bg-[#4A0E17] text-[#F3C562] font-semibold hover:bg-[#5C1521] transition-colors cursor-pointer shrink-0">
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>Upload Photo File</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleSlidePhotoFileUpload}
+                          className="hidden"
+                        />
+                      </label>
+
+                      <div className="relative flex-1">
+                        <ImageIcon className="w-3.5 h-3.5 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="text"
+                          value={slideModalImageUrl}
+                          onChange={(e) => setSlideModalImageUrl(e.target.value)}
+                          placeholder="Or paste image URL / Google Drive share link..."
+                          className="w-full pl-8 pr-3 py-2 rounded border border-stone-300 bg-white text-stone-900 focus:outline-none focus:ring-2 focus:ring-[#4A0E17] focus:border-[#4A0E17]"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Live 1000x500 (2:1) Preview */}
+                    {slideModalImageUrl && (
+                      <div className="rounded-lg overflow-hidden border border-stone-300 bg-stone-900 relative aspect-[2/1] max-h-52 w-full">
+                        <img
+                          src={normalizeImageUrl(slideModalImageUrl)}
+                          alt="1000x500 Slide Preview"
+                          referrerPolicy="no-referrer"
+                          onError={handleImageErrorWithDriveFallback}
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent pointer-events-none" />
+                        <div className="absolute bottom-2.5 left-3 right-3 text-white">
+                          <span className="inline-block px-2 py-0.5 rounded bg-[#D4AF37] text-[#2A050B] font-extrabold uppercase text-[10px] mb-1">
+                            {slideModalCategory}
+                          </span>
+                          <div className="font-serif font-bold text-sm text-[#F3C562] truncate">
+                            {articles.find((a) => a.id === slideModalPostId)?.title}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="pt-3 border-t border-stone-200 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsUploadSlideModalOpen(false)}
+                    className="px-4 py-2 text-xs font-semibold text-stone-600 hover:text-stone-900 hover:bg-stone-100 rounded transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={!slideModalPostId}
+                    className="px-5 py-2 text-xs font-bold text-[#2A050B] bg-[#D4AF37] hover:bg-[#F3C562] disabled:opacity-50 rounded transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-4 h-4 text-[#4A0E17]" />
+                    <span>Save Slide Picture</span>
                   </button>
                 </div>
               </form>

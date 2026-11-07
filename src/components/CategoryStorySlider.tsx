@@ -1,13 +1,8 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
   ArrowUpRight,
-  Camera,
-  Upload,
-  Link as LinkIcon,
-  X,
-  Check,
   Clock,
   Pause,
   Play,
@@ -20,7 +15,6 @@ interface CategoryStorySliderProps {
   articles: Article[];
   categories: PublicationCategory[];
   onSelectArticle: (article: Article) => void;
-  onUpdateArticle?: (updated: Article) => void;
 }
 
 const SLIDE_INTERVAL_MS = 20000; // 20 seconds as requested
@@ -44,19 +38,10 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
   articles,
   categories,
   onSelectArticle,
-  onUpdateArticle,
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-
-  // Modal state for uploading/updating a slide picture linked to a post
-  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
-  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('News');
-  const [selectedPostId, setSelectedPostId] = useState<string>('');
-  const [slideImageUrlInput, setSlideImageUrlInput] = useState<string>('');
-  const [uploadSuccessBanner, setUploadSuccessBanner] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Build ordered slides from articles across NEWS, FEATURES, OPINION, SPORTS (and any custom categories)
   // Interleaves the top story of News, Features, Opinion, Sports first (prioritizing posts with uploaded photos),
@@ -145,7 +130,7 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
 
   // 20-second automatic slide timer (ticks every 1s to drive progress bar & switches at 20s)
   useEffect(() => {
-    if (slides.length <= 1 || isPaused || isUploadModalOpen) return;
+    if (slides.length <= 1 || isPaused) return;
 
     const timer = setInterval(() => {
       setElapsedSeconds((prev) => {
@@ -158,111 +143,13 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [slides.length, isPaused, isUploadModalOpen]);
+  }, [slides.length, isPaused]);
 
   const handleGoToSlide = (index: number) => {
     if (slides.length === 0) return;
     const nextIndex = (index + slides.length) % slides.length;
     setCurrentIndex(nextIndex);
     setElapsedSeconds(0);
-  };
-
-  const handleOpenUploadModal = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    const currentSlide = slides[currentIndex];
-    if (currentSlide) {
-      setSelectedCategoryFilter(currentSlide.article.category);
-      setSelectedPostId(currentSlide.article.id);
-      setSlideImageUrlInput(currentSlide.article.imageUrl || '');
-    } else if (articles.length > 0) {
-      setSelectedCategoryFilter(articles[0].category);
-      setSelectedPostId(articles[0].id);
-      setSlideImageUrlInput(articles[0].imageUrl || '');
-    }
-    setUploadSuccessBanner(null);
-    setIsUploadModalOpen(true);
-  };
-
-  const handleCategoryChangeInModal = (catName: string) => {
-    setSelectedCategoryFilter(catName);
-    const matchingPosts = articles.filter(
-      (a) => a.category.toLowerCase() === catName.toLowerCase()
-    );
-    if (matchingPosts.length > 0) {
-      setSelectedPostId(matchingPosts[0].id);
-      setSlideImageUrlInput(matchingPosts[0].imageUrl || '');
-    } else {
-      setSelectedPostId('');
-      setSlideImageUrlInput('');
-    }
-  };
-
-  const handlePostChangeInModal = (postId: string) => {
-    setSelectedPostId(postId);
-    const found = articles.find((a) => a.id === postId);
-    if (found) {
-      setSlideImageUrlInput(found.imageUrl || '');
-    }
-  };
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const targetWidth = 1000;
-        const targetHeight = 500;
-        canvas.width = targetWidth;
-        canvas.height = targetHeight;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          // Cover crop to 1000x500 (2:1 aspect ratio)
-          const scale = Math.max(targetWidth / img.width, targetHeight / img.height);
-          const scaledWidth = img.width * scale;
-          const scaledHeight = img.height * scale;
-          const dx = (targetWidth - scaledWidth) / 2;
-          const dy = (targetHeight - scaledHeight) / 2;
-          ctx.drawImage(img, dx, dy, scaledWidth, scaledHeight);
-          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.84);
-          setSlideImageUrlInput(compressedDataUrl);
-        } else {
-          setSlideImageUrlInput(event.target?.result as string);
-        }
-      };
-      img.src = event.target?.result as string;
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleSaveSlideImage = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedPostId || !onUpdateArticle) return;
-    const targetPost = articles.find((a) => a.id === selectedPostId);
-    if (!targetPost) return;
-    const normalized = normalizeImageUrl(slideImageUrlInput);
-    onUpdateArticle({
-      ...targetPost,
-      imageUrl: normalized || undefined,
-    });
-
-    // Jump to the updated post's slide
-    const targetSlideIdx = slides.findIndex((s) => s.article.id === selectedPostId);
-    if (targetSlideIdx !== -1) {
-      setCurrentIndex(targetSlideIdx);
-      setElapsedSeconds(0);
-    }
-
-    setUploadSuccessBanner(
-      `Updated 1000×500 slide picture for "${targetPost.title}"!`
-    );
-    setTimeout(() => {
-      setIsUploadModalOpen(false);
-      setUploadSuccessBanner(null);
-    }, 1100);
   };
 
   if (slides.length === 0) return null;
@@ -275,25 +162,6 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
       text: '#142304',
       border: categoryColor,
     };
-
-  const postsInSelectedCategory = articles.filter(
-    (a) => a.category.toLowerCase() === selectedCategoryFilter.toLowerCase()
-  );
-
-  const availableCategories = [
-    'News',
-    'Features',
-    'Opinion',
-    'Sports',
-    ...categories
-      .map((c) => c.name)
-      .filter(
-        (n) =>
-          !['news', 'features', 'opinion', 'sports', 'announcements'].includes(
-            n.toLowerCase()
-          )
-      ),
-  ];
 
   const progressPercentage = ((elapsedSeconds / (SLIDE_INTERVAL_MS / 1000)) * 100).toFixed(1);
 
@@ -336,18 +204,6 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
                   : `Next slide in ${Math.max(1, 20 - elapsedSeconds)}s`}
               </span>
             </button>
-
-            {onUpdateArticle && (
-              <button
-                type="button"
-                onClick={handleOpenUploadModal}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#4A0E17] hover:bg-[#5C1521] text-[#F3C562] border border-[#6B1420] transition-colors text-[11px] font-semibold cursor-pointer shadow-2xs"
-                title="Upload or change the 1000×500 slide photo for News, Features, Opinion, or Sports posts"
-              >
-                <Camera className="w-3.5 h-3.5" />
-                <span>Upload Slide Photo</span>
-              </button>
-            )}
           </div>
         </div>
 
@@ -515,173 +371,6 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
           </div>
         </div>
       </div>
-
-      {/* Modal to Upload or Paste 1000x500 Slide Picture for a Category Post */}
-      {isUploadModalOpen && (
-        <div
-          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4"
-          onClick={() => setIsUploadModalOpen(false)}
-        >
-          <div
-            className="bg-[#FFFDF9] text-stone-900 rounded-xl max-w-lg w-full overflow-hidden shadow-2xl border border-[#6B1420]"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Maroon Header */}
-            <div className="bg-[#4A0E17] text-white px-5 py-4 flex items-center justify-between border-b border-[#6B1420]">
-              <div>
-                <h4 className="font-serif font-bold text-base text-white flex items-center gap-2">
-                  <Camera className="w-4 h-4 text-[#F3C562]" />
-                  <span>Upload 1000 × 500 Category Slide Picture</span>
-                </h4>
-                <p className="text-[11px] text-stone-300 mt-0.5">
-                  Attach a photo to a News, Features, Opinion, or Sports post in the slideshow
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsUploadModalOpen(false)}
-                className="text-stone-300 hover:text-white p-1 rounded cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveSlideImage} className="p-5 space-y-4 text-xs">
-              {uploadSuccessBanner && (
-                <div className="p-3 rounded bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-center gap-2 font-medium">
-                  <Check className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>{uploadSuccessBanner}</span>
-                </div>
-              )}
-
-              {/* Step 1: Select Category */}
-              <div>
-                <label className="block font-bold uppercase tracking-wider text-stone-700 mb-1.5">
-                  1. Select Category
-                </label>
-                <div className="flex flex-wrap gap-1.5">
-                  {availableCategories.map((catName) => {
-                    const active =
-                      selectedCategoryFilter.toLowerCase() === catName.toLowerCase();
-                    return (
-                      <button
-                        key={catName}
-                        type="button"
-                        onClick={() => handleCategoryChangeInModal(catName)}
-                        className={`px-3 py-1.5 rounded font-bold uppercase tracking-wider text-[11px] border transition-colors cursor-pointer ${
-                          active
-                            ? 'bg-[#4A0E17] text-[#F3C562] border-[#4A0E17]'
-                            : 'bg-stone-100 text-stone-700 border-stone-300 hover:bg-stone-200'
-                        }`}
-                      >
-                        {catName}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Step 2: Select Post in that Category */}
-              <div>
-                <label className="block font-bold uppercase tracking-wider text-stone-700 mb-1.5">
-                  2. Link Picture to Post ({selectedCategoryFilter})
-                </label>
-                {postsInSelectedCategory.length > 0 ? (
-                  <select
-                    value={selectedPostId}
-                    onChange={(e) => handlePostChangeInModal(e.target.value)}
-                    className="w-full px-3 py-2 rounded border border-stone-300 bg-white text-stone-900 font-medium focus:outline-none focus:border-[#4A0E17]"
-                  >
-                    {postsInSelectedCategory.map((post) => (
-                      <option key={post.id} value={post.id}>
-                        {post.title}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <p className="text-stone-500 italic">
-                    No published posts found in {selectedCategoryFilter}.
-                  </p>
-                )}
-              </div>
-
-              {/* Step 3: Upload File or Paste Image URL / Google Drive Link */}
-              {selectedPostId && (
-                <div className="space-y-3">
-                  <label className="block font-bold uppercase tracking-wider text-stone-700">
-                    3. Upload Picture (1000 × 500) or Paste Image / Google Drive Link
-                  </label>
-
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      onChange={handleFileUpload}
-                      className="hidden"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded bg-[#4A0E17] text-[#F3C562] font-semibold hover:bg-[#5C1521] transition-colors cursor-pointer shrink-0"
-                    >
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>Upload Photo File</span>
-                    </button>
-
-                    <div className="relative flex-1">
-                      <LinkIcon className="w-3.5 h-3.5 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                      <input
-                        type="text"
-                        value={slideImageUrlInput}
-                        onChange={(e) => setSlideImageUrlInput(e.target.value)}
-                        placeholder="Or paste image URL / Google Drive share link..."
-                        className="w-full pl-8 pr-3 py-2 rounded border border-stone-300 bg-white text-stone-900 focus:outline-none focus:border-[#4A0E17]"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Live 2:1 (1000x500) Preview */}
-                  {slideImageUrlInput && (
-                    <div className="rounded-lg overflow-hidden border border-stone-300 bg-stone-900 relative aspect-[2/1] max-h-48 w-full">
-                      <img
-                        src={normalizeImageUrl(slideImageUrlInput)}
-                        alt="Slide preview"
-                        referrerPolicy="no-referrer"
-                        onError={handleImageErrorWithDriveFallback}
-                        className="w-full h-full object-cover"
-                      />
-                      <div className="absolute bottom-2 left-2 right-2 bg-black/70 text-white px-2.5 py-1.5 rounded text-[11px] truncate">
-                        Headline Link:{' '}
-                        <span className="font-serif font-bold text-[#F3C562]">
-                          {articles.find((a) => a.id === selectedPostId)?.title}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <div className="pt-3 border-t border-stone-200 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsUploadModalOpen(false)}
-                  className="px-3.5 py-2 rounded border border-stone-300 text-stone-700 hover:bg-stone-100 font-medium cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={!selectedPostId}
-                  className="px-4 py-2 rounded bg-[#4A0E17] text-[#F3C562] font-bold hover:bg-[#5C1521] disabled:opacity-50 cursor-pointer"
-                >
-                  Save Slide Picture
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </section>
   );
 };
