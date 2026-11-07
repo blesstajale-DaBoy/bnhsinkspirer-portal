@@ -53,6 +53,7 @@ import {
   generateRandomElectronicIssn,
 } from '../types';
 import { downloadSubmissionTextFile } from '../utils/exporter';
+import { normalizeImageUrl, handleImageErrorWithDriveFallback } from '../utils/imageUrl';
 import { useAuth } from '../context/AuthContext';
 import { AuthorBioManager } from './AuthorBioManager';
 import { InkspirerLogo } from './InkspirerLogo';
@@ -609,7 +610,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
       role: newAdviserRole.trim() || 'School Publication Adviser',
       gradeOrDesignation: newAdviserDesignation.trim() || 'Faculty Adviser',
       department: newAdviserDepartment.trim() || 'Adviser & Editorial Consultant',
-      photoUrl: newAdviserPhoto.trim() || undefined,
+      photoUrl: normalizeImageUrl(newAdviserPhoto) || undefined,
       email: newAdviserEmail.trim() || `${newAdviserName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '.')}@bnhs.deped.edu.ph`,
       isPrimaryAdviser: makePrimaryAdviser,
       adviserStatus: 'active',
@@ -878,7 +879,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
       role: newStaffRole.trim(),
       gradeOrDesignation: newStaffGrade.trim() || 'Campus Journalist',
       department: newStaffDept.trim() || 'The Inkspirer Editorial Board',
-      photoUrl: newStaffPhoto.trim() || undefined,
+      photoUrl: normalizeImageUrl(newStaffPhoto) || undefined,
     });
     showToast(`Added ${newStaffName.trim()} to the Editorial Board Roster!`);
     setIsAddStaffOpen(false);
@@ -896,7 +897,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
     const cleanEmail =
       editStaffEmail.trim() ||
       `${cleanName.toLowerCase().replace(/[^a-z0-9]+/g, '.')}@bnhs.deped.edu.ph`;
-    const cleanPhoto = editStaffPhoto.trim() || undefined;
+    const cleanPhoto = normalizeImageUrl(editStaffPhoto) || undefined;
 
     onUpdateStaffMember(editingStaff.id, {
       name: cleanName,
@@ -1004,7 +1005,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
       badgeBg: newCatBadgeBg,
       badgeText: newCatBadgeText,
       iconName: newCatIcon,
-      imageUrl: newCatImageUrl.trim() || undefined,
+      imageUrl: normalizeImageUrl(newCatImageUrl) || undefined,
     });
 
     showToast(`Created category "${newCatName.trim()}"!`);
@@ -1025,7 +1026,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
       badgeBg: editCatBadgeBg,
       badgeText: editCatBadgeText,
       iconName: editCatIcon,
-      imageUrl: editCatImageUrl.trim() || undefined,
+      imageUrl: normalizeImageUrl(editCatImageUrl) || undefined,
     });
 
     showToast(`Updated category "${editCatName.trim()}"!`);
@@ -1141,7 +1142,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
       content: paragraphs.length > 0 ? paragraphs : [editContent.trim()],
       pullQuote: editPullQuote.trim() || undefined,
       imageCaption: editCaption.trim() || undefined,
-      imageUrl: editImageUrl.trim() || undefined,
+      imageUrl: normalizeImageUrl(editImageUrl) || undefined,
       leadStory: editLeadStory,
       featured: editFeatured,
       categoryTheme: catTheme,
@@ -1277,7 +1278,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
       authorPhotoUrl: matchedProfile?.photoUrl,
       authorMotto: matchedProfile?.journalismMotto,
       authorAccolades: matchedProfile?.accolades,
-      imageUrl: composerImageUrl.trim() || undefined,
+      imageUrl: normalizeImageUrl(composerImageUrl) || undefined,
       date: new Date().toLocaleDateString('en-US', {
         month: 'long',
         day: 'numeric',
@@ -2331,11 +2332,11 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                     <div className="border border-stone-200 bg-[#FBF9F5] p-4 rounded-lg space-y-3">
                       <div className="flex items-center justify-between">
                         <label className="text-xs font-bold uppercase tracking-wider text-stone-700 flex items-center gap-1.5">
-                          <Upload className="w-3.5 h-3.5 text-[#133E87]" />
+                          <Upload className="w-3.5 h-3.5 text-[#4A0E17]" />
                           <span>Attach Photo or Artwork</span>
                         </label>
-                        <span className="text-[11px] text-stone-400">
-                          (Defaults to custom category SVG artwork if none uploaded)
+                        <span className="text-[11px] text-stone-500">
+                          (Supports file upload, direct image URL, or Google Drive link)
                         </span>
                       </div>
 
@@ -2344,32 +2345,41 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                           type="file"
                           accept="image/*"
                           onChange={handleImageFileChange}
-                          className="w-full text-xs text-stone-500 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-[#0B2545] file:text-white hover:file:bg-[#133E87]"
+                          className="w-full text-xs text-stone-500 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-[#4A0E17] file:text-white hover:file:bg-[#5C1521] cursor-pointer"
                         />
                         <span className="text-xs text-stone-400">or</span>
                         <input
                           type="text"
                           value={composerImageUrl}
-                          onChange={(e) => setComposerImageUrl(e.target.value)}
-                          placeholder="Paste image URL (e.g. https://...)"
-                          className="w-full px-3 py-1.5 text-xs border border-stone-300 rounded bg-white focus:ring-1 focus:ring-[#0B2545] focus:outline-none"
+                          onChange={(e) => setComposerImageUrl(normalizeImageUrl(e.target.value))}
+                          onPaste={(e) => {
+                            const pasted = e.clipboardData.getData('text');
+                            if (pasted) {
+                              e.preventDefault();
+                              setComposerImageUrl(normalizeImageUrl(pasted));
+                            }
+                          }}
+                          placeholder="Paste image URL or Google Drive share link..."
+                          className="w-full px-3 py-1.5 text-xs border border-stone-300 rounded bg-white focus:ring-1 focus:ring-[#4A0E17] focus:outline-none"
                         />
                       </div>
 
                       {composerImageUrl && (
                         <div className="mt-2 flex items-center gap-3 bg-white p-2 rounded border border-stone-200">
                           <img
-                            src={composerImageUrl}
+                            src={normalizeImageUrl(composerImageUrl)}
                             alt="Preview"
-                            className="w-16 h-12 object-cover rounded border border-stone-200"
+                            referrerPolicy="no-referrer"
+                            onError={handleImageErrorWithDriveFallback}
+                            className="w-16 h-12 object-cover rounded border border-stone-200 shrink-0"
                           />
                           <div className="text-xs text-stone-600 flex-1 truncate">
-                            Image attached successfully
+                            Image attached & preview ready
                           </div>
                           <button
                             type="button"
                             onClick={() => setComposerImageUrl('')}
-                            className="text-xs text-red-600 hover:underline"
+                            className="text-xs text-red-600 hover:underline cursor-pointer"
                           >
                             Remove
                           </button>
@@ -2518,8 +2528,10 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                             <div className="w-16 h-14 sm:w-20 sm:h-16 rounded overflow-hidden bg-stone-100 border border-stone-200 shrink-0 flex items-center justify-center">
                               {art.imageUrl ? (
                                 <img
-                                  src={art.imageUrl}
+                                  src={normalizeImageUrl(art.imageUrl)}
                                   alt={art.title}
+                                  referrerPolicy="no-referrer"
+                                  onError={handleImageErrorWithDriveFallback}
                                   className="w-full h-full object-cover"
                                 />
                               ) : (
@@ -2834,7 +2846,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                           {/* PHOTO UPLOAD & MANAGEMENT */}
                           <div className="border border-stone-200 bg-[#FBF9F5] p-3.5 rounded-lg space-y-2">
                             <label className="text-xs font-bold uppercase tracking-wider text-stone-700 flex items-center gap-1.5">
-                              <Upload className="w-3.5 h-3.5 text-[#133E87]" />
+                              <Upload className="w-3.5 h-3.5 text-[#4A0E17]" />
                               <span>Upload or Replace Story Photo</span>
                             </label>
 
@@ -2843,32 +2855,41 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                                 type="file"
                                 accept="image/*"
                                 onChange={handleEditImageUpload}
-                                className="w-full text-xs text-stone-500 file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-[#0B2545] file:text-white hover:file:bg-[#133E87]"
+                                className="w-full text-xs text-stone-500 file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-[#4A0E17] file:text-white hover:file:bg-[#5C1521] cursor-pointer"
                               />
                               <span className="text-xs text-stone-400">or</span>
                               <input
                                 type="text"
                                 value={editImageUrl}
-                                onChange={(e) => setEditImageUrl(e.target.value)}
-                                placeholder="Paste image URL (https://...)"
-                                className="w-full px-3 py-1.5 text-xs border border-stone-300 rounded bg-white focus:ring-1 focus:ring-[#0B2545] focus:outline-none"
+                                onChange={(e) => setEditImageUrl(normalizeImageUrl(e.target.value))}
+                                onPaste={(e) => {
+                                  const pasted = e.clipboardData.getData('text');
+                                  if (pasted) {
+                                    e.preventDefault();
+                                    setEditImageUrl(normalizeImageUrl(pasted));
+                                  }
+                                }}
+                                placeholder="Paste image URL or Google Drive share link..."
+                                className="w-full px-3 py-1.5 text-xs border border-stone-300 rounded bg-white focus:ring-1 focus:ring-[#4A0E17] focus:outline-none"
                               />
                             </div>
 
                             {editImageUrl && (
                               <div className="mt-2 flex items-center gap-3 bg-white p-2 rounded border border-stone-200">
                                 <img
-                                  src={editImageUrl}
+                                  src={normalizeImageUrl(editImageUrl)}
                                   alt="Photo Preview"
-                                  className="w-16 h-12 object-cover rounded border border-stone-200"
+                                  referrerPolicy="no-referrer"
+                                  onError={handleImageErrorWithDriveFallback}
+                                  className="w-16 h-12 object-cover rounded border border-stone-200 shrink-0"
                                 />
                                 <div className="text-xs text-stone-600 flex-1 truncate">
-                                  Photo attached successfully
+                                  Photo attached & preview ready
                                 </div>
                                 <button
                                   type="button"
                                   onClick={() => setEditImageUrl('')}
-                                  className="text-xs text-red-600 hover:underline"
+                                  className="text-xs text-red-600 hover:underline cursor-pointer"
                                 >
                                   Remove Photo
                                 </button>
@@ -3551,8 +3572,10 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                           <div className="relative h-36 bg-stone-900 overflow-hidden">
                             {cat.imageUrl ? (
                               <img
-                                src={cat.imageUrl}
+                                src={normalizeImageUrl(cat.imageUrl)}
                                 alt={cat.name}
+                                referrerPolicy="no-referrer"
+                                onError={handleImageErrorWithDriveFallback}
                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                               />
                             ) : (
@@ -3762,13 +3785,13 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                           {/* Cover Photo / Image Upload Section */}
                           <div className="border border-stone-200 bg-stone-50 p-4 rounded-lg space-y-3">
                             <label className="block text-xs font-bold text-stone-800">
-                              Display Cover Photo / Header Image
+                              Upload or Replace Story Photo / Category Cover Image
                             </label>
 
                             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                               {/* File Upload Button */}
                               <label className="px-3 py-2 bg-white border border-stone-300 hover:bg-stone-100 rounded text-xs font-medium cursor-pointer text-stone-700 flex items-center justify-center gap-1.5 transition-colors shadow-2xs">
-                                <Upload className="w-3.5 h-3.5 text-[#0B2545]" />
+                                <Upload className="w-3.5 h-3.5 text-[#4A0E17]" />
                                 <span>Upload Photo File</span>
                                 <input
                                   type="file"
@@ -3778,14 +3801,21 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                                 />
                               </label>
 
-                              <span className="text-xs text-stone-400 text-center sm:text-left">or enter image web URL:</span>
+                              <span className="text-xs text-stone-400 text-center sm:text-left">or paste image URL:</span>
 
                               <input
-                                type="url"
+                                type="text"
                                 value={newCatImageUrl}
-                                onChange={(e) => setNewCatImageUrl(e.target.value)}
-                                placeholder="https://example.com/cover-photo.jpg"
-                                className="flex-1 px-3 py-2 text-xs border border-stone-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-[#0B2545]"
+                                onChange={(e) => setNewCatImageUrl(normalizeImageUrl(e.target.value))}
+                                onPaste={(e) => {
+                                  const pasted = e.clipboardData.getData('text');
+                                  if (pasted) {
+                                    e.preventDefault();
+                                    setNewCatImageUrl(normalizeImageUrl(pasted));
+                                  }
+                                }}
+                                placeholder="Paste image URL or Google Drive share link..."
+                                className="flex-1 px-3 py-2 text-xs border border-stone-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-[#4A0E17]"
                               />
                             </div>
 
@@ -3809,6 +3839,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                                     <img
                                       src={preset.url}
                                       alt={preset.label}
+                                      referrerPolicy="no-referrer"
                                       className="w-full h-full object-cover"
                                     />
                                     <div className="absolute inset-0 bg-black/40 flex items-end p-1 text-[9px] text-white font-medium leading-tight">
@@ -3823,8 +3854,10 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                             {newCatImageUrl && (
                               <div className="relative h-28 rounded-lg overflow-hidden border border-stone-200 mt-2">
                                 <img
-                                  src={newCatImageUrl}
+                                  src={normalizeImageUrl(newCatImageUrl)}
                                   alt="Cover Preview"
+                                  referrerPolicy="no-referrer"
+                                  onError={handleImageErrorWithDriveFallback}
                                   className="w-full h-full object-cover"
                                 />
                                 <div className="absolute top-2 right-2">
@@ -3855,7 +3888,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                             </button>
                             <button
                               type="submit"
-                              className="px-5 py-2 text-xs font-bold text-white bg-[#0B2545] hover:bg-[#133E87] rounded transition-colors shadow-xs"
+                              className="px-5 py-2 text-xs font-bold text-white bg-[#4A0E17] hover:bg-[#5C1521] rounded transition-colors shadow-xs"
                             >
                               Create Category
                             </button>
@@ -3968,13 +4001,13 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                           {/* Cover Photo / Image Upload Section */}
                           <div className="border border-stone-200 bg-stone-50 p-4 rounded-lg space-y-3">
                             <label className="block text-xs font-bold text-stone-800">
-                              Display Cover Photo / Banner
+                              Upload or Replace Story Photo / Category Cover Banner
                             </label>
 
                             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                               {/* File Upload Button */}
                               <label className="px-3 py-2 bg-white border border-stone-300 hover:bg-stone-100 rounded text-xs font-medium cursor-pointer text-stone-700 flex items-center justify-center gap-1.5 transition-colors shadow-2xs">
-                                <Upload className="w-3.5 h-3.5 text-[#0B2545]" />
+                                <Upload className="w-3.5 h-3.5 text-[#4A0E17]" />
                                 <span>Upload New Photo</span>
                                 <input
                                   type="file"
@@ -3984,14 +4017,21 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                                 />
                               </label>
 
-                              <span className="text-xs text-stone-400 text-center sm:text-left">or edit image URL:</span>
+                              <span className="text-xs text-stone-400 text-center sm:text-left">or paste image URL:</span>
 
                               <input
-                                type="url"
+                                type="text"
                                 value={editCatImageUrl}
-                                onChange={(e) => setEditCatImageUrl(e.target.value)}
-                                placeholder="https://example.com/cover-photo.jpg"
-                                className="flex-1 px-3 py-2 text-xs border border-stone-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-[#0B2545]"
+                                onChange={(e) => setEditCatImageUrl(normalizeImageUrl(e.target.value))}
+                                onPaste={(e) => {
+                                  const pasted = e.clipboardData.getData('text');
+                                  if (pasted) {
+                                    e.preventDefault();
+                                    setEditCatImageUrl(normalizeImageUrl(pasted));
+                                  }
+                                }}
+                                placeholder="Paste image URL or Google Drive share link..."
+                                className="flex-1 px-3 py-2 text-xs border border-stone-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-[#4A0E17]"
                               />
                             </div>
 
@@ -4015,6 +4055,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                                     <img
                                       src={preset.url}
                                       alt={preset.label}
+                                      referrerPolicy="no-referrer"
                                       className="w-full h-full object-cover"
                                     />
                                     <div className="absolute inset-0 bg-black/40 flex items-end p-1 text-[9px] text-white font-medium leading-tight">
@@ -4029,8 +4070,10 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                             {editCatImageUrl && (
                               <div className="relative h-28 rounded-lg overflow-hidden border border-stone-200 mt-2">
                                 <img
-                                  src={editCatImageUrl}
+                                  src={normalizeImageUrl(editCatImageUrl)}
                                   alt="Cover Preview"
+                                  referrerPolicy="no-referrer"
+                                  onError={handleImageErrorWithDriveFallback}
                                   className="w-full h-full object-cover"
                                 />
                                 <div className="absolute top-2 right-2">
@@ -4233,8 +4276,10 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                           <div className="flex items-start gap-3.5 min-w-0">
                             {member.photoUrl ? (
                               <img
-                                src={member.photoUrl}
+                                src={normalizeImageUrl(member.photoUrl)}
                                 alt={member.name}
+                                referrerPolicy="no-referrer"
+                                onError={handleImageErrorWithDriveFallback}
                                 className="w-12 h-12 rounded-full object-cover border-2 border-[#D4AF37] shrink-0"
                               />
                             ) : (
@@ -4431,6 +4476,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                               role: activeAdviserConfig.role,
                               gradeOrDesignation: activeAdviserConfig.designation,
                               department: activeAdviserConfig.department,
+                              avatarSeed: activeAdviserConfig.name,
                               email: activeAdviserConfig.email,
                               photoUrl: activeAdviserConfig.photoUrl,
                             };
@@ -4626,7 +4672,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
               {isAddStaffOpen && (
                 <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4">
                   <div className="bg-white rounded-lg shadow-2xl border border-stone-200 w-full max-w-lg overflow-hidden">
-                    <div className="bg-[#0B2545] text-white px-5 py-3.5 flex items-center justify-between">
+                    <div className="bg-[#4A0E17] text-white px-5 py-3.5 flex items-center justify-between border-b border-[#34070E]">
                       <div className="flex items-center gap-2">
                         <Users className="w-4 h-4 text-[#D4AF37]" />
                         <h4 className="font-serif font-bold text-base">
@@ -4735,12 +4781,14 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                         <div className="flex items-center gap-3">
                           {newStaffPhoto ? (
                             <img
-                              src={newStaffPhoto}
+                              src={normalizeImageUrl(newStaffPhoto)}
                               alt="Preview"
+                              referrerPolicy="no-referrer"
+                              onError={handleImageErrorWithDriveFallback}
                               className="w-11 h-11 rounded-full object-cover border border-[#D4AF37] shrink-0"
                             />
                           ) : (
-                            <div className="w-11 h-11 rounded-full bg-[#0B2545] text-white flex items-center justify-center font-bold text-xs shrink-0">
+                            <div className="w-11 h-11 rounded-full bg-[#4A0E17] text-white flex items-center justify-center font-bold text-xs shrink-0">
                               {(newStaffName || 'IN')
                                 .split(' ')
                                 .filter(Boolean)
@@ -4753,7 +4801,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                           <div className="flex-1 space-y-1.5">
                             <div className="flex items-center gap-2">
                               <label className="px-3 py-1.5 text-xs font-semibold bg-stone-100 hover:bg-stone-200 text-stone-700 rounded cursor-pointer transition-colors inline-flex items-center gap-1.5">
-                                <Upload className="w-3.5 h-3.5" />
+                                <Upload className="w-3.5 h-3.5 text-[#4A0E17]" />
                                 <span>Upload Photo</span>
                                 <input
                                   type="file"
@@ -4766,7 +4814,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => setNewStaffPhoto('')}
-                                  className="text-xs text-red-600 hover:underline"
+                                  className="text-xs text-red-600 hover:underline cursor-pointer"
                                 >
                                   Clear Photo
                                 </button>
@@ -4775,9 +4823,16 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                             <input
                               type="text"
                               value={newStaffPhoto}
-                              onChange={(e) => setNewStaffPhoto(e.target.value)}
-                              placeholder="Or paste image URL..."
-                              className="w-full px-2.5 py-1 text-xs border border-stone-200 rounded focus:outline-none focus:border-stone-400"
+                              onChange={(e) => setNewStaffPhoto(normalizeImageUrl(e.target.value))}
+                              onPaste={(e) => {
+                                const pasted = e.clipboardData.getData('text');
+                                if (pasted) {
+                                  e.preventDefault();
+                                  setNewStaffPhoto(normalizeImageUrl(pasted));
+                                }
+                              }}
+                              placeholder="Paste image URL or Google Drive share link..."
+                              className="w-full px-2.5 py-1 text-xs border border-stone-200 rounded focus:outline-none focus:border-[#4A0E17]"
                             />
                           </div>
                         </div>
@@ -4807,7 +4862,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
               {editingStaff && (
                 <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4">
                   <div className="bg-white rounded-lg shadow-2xl border border-stone-200 w-full max-w-lg overflow-hidden">
-                    <div className="bg-[#0B2545] text-white px-5 py-3.5 flex items-center justify-between">
+                    <div className="bg-[#4A0E17] text-white px-5 py-3.5 flex items-center justify-between border-b border-[#34070E]">
                       <div className="flex items-center gap-2">
                         <Edit3 className="w-4 h-4 text-[#D4AF37]" />
                         <h4 className="font-serif font-bold text-base">
@@ -4953,12 +5008,14 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                         <div className="flex items-center gap-3">
                           {editStaffPhoto ? (
                             <img
-                              src={editStaffPhoto}
+                              src={normalizeImageUrl(editStaffPhoto)}
                               alt="Preview"
+                              referrerPolicy="no-referrer"
+                              onError={handleImageErrorWithDriveFallback}
                               className="w-11 h-11 rounded-full object-cover border border-[#D4AF37] shrink-0"
                             />
                           ) : (
-                            <div className="w-11 h-11 rounded-full bg-[#0B2545] text-white flex items-center justify-center font-bold text-xs shrink-0">
+                            <div className="w-11 h-11 rounded-full bg-[#4A0E17] text-white flex items-center justify-center font-bold text-xs shrink-0">
                               {(editStaffName || 'IN')
                                 .split(' ')
                                 .filter(Boolean)
@@ -4971,7 +5028,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                           <div className="flex-1 space-y-1.5">
                             <div className="flex items-center gap-2">
                               <label className="px-3 py-1.5 text-xs font-semibold bg-stone-100 hover:bg-stone-200 text-stone-700 rounded cursor-pointer transition-colors inline-flex items-center gap-1.5">
-                                <Upload className="w-3.5 h-3.5" />
+                                <Upload className="w-3.5 h-3.5 text-[#4A0E17]" />
                                 <span>Change Photo</span>
                                 <input
                                   type="file"
@@ -4984,7 +5041,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => setEditStaffPhoto('')}
-                                  className="text-xs text-red-600 hover:underline"
+                                  className="text-xs text-red-600 hover:underline cursor-pointer"
                                 >
                                   Remove Photo
                                 </button>
@@ -4993,9 +5050,16 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                             <input
                               type="text"
                               value={editStaffPhoto}
-                              onChange={(e) => setEditStaffPhoto(e.target.value)}
-                              placeholder="Or paste image URL..."
-                              className="w-full px-2.5 py-1 text-xs border border-stone-200 rounded focus:outline-none focus:border-stone-400"
+                              onChange={(e) => setEditStaffPhoto(normalizeImageUrl(e.target.value))}
+                              onPaste={(e) => {
+                                const pasted = e.clipboardData.getData('text');
+                                if (pasted) {
+                                  e.preventDefault();
+                                  setEditStaffPhoto(normalizeImageUrl(pasted));
+                                }
+                              }}
+                              placeholder="Paste image URL or Google Drive share link..."
+                              className="w-full px-2.5 py-1 text-xs border border-stone-200 rounded focus:outline-none focus:border-[#4A0E17]"
                             />
                           </div>
                         </div>
@@ -5011,7 +5075,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                         </button>
                         <button
                           type="submit"
-                          className="px-4 py-2 text-xs font-bold text-white bg-[#0B2545] hover:bg-[#133E87] rounded transition-colors shadow-xs"
+                          className="px-4 py-2 text-xs font-bold text-white bg-[#4A0E17] hover:bg-[#5C1521] rounded transition-colors shadow-xs"
                         >
                           Save Changes
                         </button>
@@ -5158,6 +5222,49 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                             placeholder="1991"
                             className="w-full px-3 py-2 text-xs font-mono border border-stone-300 rounded focus:ring-1 focus:ring-[#0B2545] focus:outline-none"
                           />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1">
+                          Profile Photo (Optional)
+                        </label>
+                        <div className="flex items-center gap-3">
+                          {newAdviserPhoto ? (
+                            <img
+                              src={normalizeImageUrl(newAdviserPhoto)}
+                              alt="Adviser Preview"
+                              referrerPolicy="no-referrer"
+                              onError={handleImageErrorWithDriveFallback}
+                              className="w-11 h-11 rounded-full object-cover border border-[#D4AF37] shrink-0"
+                            />
+                          ) : (
+                            <div className="w-11 h-11 rounded-full bg-[#4A0E17] text-white flex items-center justify-center font-bold text-xs shrink-0">
+                              {(newAdviserName || 'PA')
+                                .split(' ')
+                                .filter(Boolean)
+                                .map((n) => n[0])
+                                .join('')
+                                .slice(0, 2)
+                                .toUpperCase()}
+                            </div>
+                          )}
+                          <div className="flex-1 space-y-1.5">
+                            <input
+                              type="text"
+                              value={newAdviserPhoto}
+                              onChange={(e) => setNewAdviserPhoto(normalizeImageUrl(e.target.value))}
+                              onPaste={(e) => {
+                                const pasted = e.clipboardData.getData('text');
+                                if (pasted) {
+                                  e.preventDefault();
+                                  setNewAdviserPhoto(normalizeImageUrl(pasted));
+                                }
+                              }}
+                              placeholder="Paste image URL or Google Drive share link..."
+                              className="w-full px-2.5 py-1.5 text-xs border border-stone-200 rounded focus:outline-none focus:border-[#4A0E17]"
+                            />
+                          </div>
                         </div>
                       </div>
 

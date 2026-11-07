@@ -21,6 +21,8 @@ import {
 } from 'lucide-react';
 import { Article, StudentAuthorProfile } from '../types';
 import { getAuthorAvatarStyle, getAuthorInitials } from './AuthorProfile';
+import { InkspirerLogo } from './InkspirerLogo';
+import { normalizeImageUrl, handleImageErrorWithDriveFallback } from '../utils/imageUrl';
 
 interface AuthorBioManagerProps {
   authorProfiles: StudentAuthorProfile[];
@@ -233,6 +235,8 @@ export const AuthorBioManager: React.FC<AuthorBioManagerProps> = ({
       ? [...formAccolades, accoladeInput.trim()]
       : formAccolades;
 
+    const normalizedPhoto = normalizeImageUrl(formPhotoUrl);
+
     if (editingProfile) {
       onUpdateAuthorProfile(
         editingProfile.id,
@@ -245,7 +249,7 @@ export const AuthorBioManager: React.FC<AuthorBioManagerProps> = ({
           journalismMotto: formMotto.trim() || undefined,
           email: formEmail.trim() || undefined,
           joinedYear: formJoinedYear.trim() || undefined,
-          photoUrl: formPhotoUrl.trim() || undefined,
+          photoUrl: normalizedPhoto || undefined,
           accolades: finalAccolades,
         },
         editingProfile.name
@@ -268,7 +272,7 @@ export const AuthorBioManager: React.FC<AuthorBioManagerProps> = ({
             .toLowerCase()
             .replace(/[^a-z0-9]+/g, '.')}@bnhs.deped.edu.ph`,
         joinedYear: formJoinedYear.trim() || 'SY 2025–2026',
-        photoUrl: formPhotoUrl.trim() || undefined,
+        photoUrl: normalizedPhoto || undefined,
         accolades: finalAccolades,
       });
       onShowToast?.(
@@ -458,8 +462,10 @@ export const AuthorBioManager: React.FC<AuthorBioManagerProps> = ({
                       <div className="relative shrink-0">
                         {prof.photoUrl ? (
                           <img
-                            src={prof.photoUrl}
+                            src={normalizeImageUrl(prof.photoUrl)}
                             alt={prof.name}
+                            referrerPolicy="no-referrer"
+                            onError={handleImageErrorWithDriveFallback}
                             className={`w-14 h-14 rounded-full object-cover border-2 ${avatarStyle.border} shadow-sm`}
                           />
                         ) : (
@@ -584,16 +590,17 @@ export const AuthorBioManager: React.FC<AuthorBioManagerProps> = ({
 
       {/* ADD / EDIT STUDENT JOURNALIST BIO PROFILE MODAL */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-60 bg-stone-900/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-xl shadow-2xl border border-stone-200 w-full max-w-2xl overflow-hidden my-auto max-h-[90vh] flex flex-col">
-            <div className="bg-[#0B2545] text-white px-6 py-4 flex items-center justify-between border-b border-[#07192F] shrink-0">
-              <div className="flex items-center gap-2.5">
-                <Feather className="w-5 h-5 text-[#F3C562]" />
+        <div className="fixed inset-0 z-60 bg-stone-950/80 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-2xl border border-[#681622] w-full max-w-2xl overflow-hidden my-auto max-h-[90vh] flex flex-col">
+            {/* Maroon Modal Navbar */}
+            <div className="bg-[#4A0E17] text-white px-6 py-4 flex items-center justify-between border-b border-[#34070E] shrink-0">
+              <div className="flex items-center gap-3">
+                <InkspirerLogo size="sm" />
                 <div>
                   <div className="text-[10px] font-bold uppercase tracking-widest text-[#F3C562]">
                     The Inkspirer Student Journalism Roster
                   </div>
-                  <h4 className="font-serif font-bold text-lg">
+                  <h4 className="font-serif font-bold text-lg text-white">
                     {editingProfile
                       ? `Edit Author Bio Profile: ${editingProfile.name}`
                       : 'Create Student Journalist Author Bio Profile'}
@@ -603,10 +610,23 @@ export const AuthorBioManager: React.FC<AuthorBioManagerProps> = ({
               <button
                 type="button"
                 onClick={() => setIsModalOpen(false)}
-                className="p-1 rounded text-stone-300 hover:text-white"
+                className="p-1.5 rounded text-stone-300 hover:text-white hover:bg-[#5C1521] transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
+            </div>
+
+            {/* Maroon Sub-Navigation Bar */}
+            <div className="bg-[#38080F] text-stone-200 px-6 py-2 border-b border-[#58111A] flex items-center justify-between text-[11px] shrink-0">
+              <div className="flex items-center gap-1.5">
+                <Feather className="w-3.5 h-3.5 text-[#D4AF37]" />
+                <span className="font-semibold text-[#F3C562]">
+                  Official BNHS Campus Press Corps Directory
+                </span>
+              </div>
+              <span className="text-stone-300">
+                Supports Direct Upload or Google Drive Image Links
+              </span>
             </div>
 
             <form
@@ -787,9 +807,9 @@ export const AuthorBioManager: React.FC<AuthorBioManagerProps> = ({
                   <button
                     type="button"
                     onClick={handleAddAccolade}
-                    className="px-3 py-1.5 bg-[#0B2545] text-white font-semibold rounded hover:bg-[#133E87] transition-colors flex items-center gap-1"
+                    className="px-3 py-1.5 bg-[#4A0E17] text-white font-semibold rounded hover:bg-[#5C1521] transition-colors flex items-center gap-1 cursor-pointer"
                   >
-                    <Plus className="w-3.5 h-3.5" />
+                    <Plus className="w-3.5 h-3.5 text-[#D4AF37]" />
                     <span>Add Honor</span>
                   </button>
                 </div>
@@ -819,7 +839,7 @@ export const AuthorBioManager: React.FC<AuthorBioManagerProps> = ({
               {/* Portrait Photo Upload */}
               <div className="bg-[#FBF9F5] border border-stone-200 rounded-lg p-3.5 space-y-2.5">
                 <label className="font-bold text-stone-700 flex items-center gap-1.5">
-                  <Upload className="w-3.5 h-3.5 text-[#133E87]" />
+                  <Upload className="w-3.5 h-3.5 text-[#4A0E17]" />
                   <span>Student Journalist Portrait Photo (Optional)</span>
                 </label>
                 <div className="flex flex-col sm:flex-row items-center gap-2.5">
@@ -827,31 +847,40 @@ export const AuthorBioManager: React.FC<AuthorBioManagerProps> = ({
                     type="file"
                     accept="image/*"
                     onChange={handlePhotoFileChange}
-                    className="w-full text-xs text-stone-500 file:mr-2.5 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-[#0B2545] file:text-white"
+                    className="w-full text-xs text-stone-500 file:mr-2.5 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-[#4A0E17] file:text-white hover:file:bg-[#5C1521] cursor-pointer"
                   />
                   <span className="text-stone-400">or</span>
                   <input
                     type="text"
                     value={formPhotoUrl}
-                    onChange={(e) => setFormPhotoUrl(e.target.value)}
-                    placeholder="Paste portrait photo URL..."
-                    className="w-full px-3 py-1.5 border border-stone-300 rounded bg-white"
+                    onChange={(e) => setFormPhotoUrl(normalizeImageUrl(e.target.value))}
+                    onPaste={(e) => {
+                      const pasted = e.clipboardData.getData('text');
+                      if (pasted) {
+                        e.preventDefault();
+                        setFormPhotoUrl(normalizeImageUrl(pasted));
+                      }
+                    }}
+                    placeholder="Paste image URL or Google Drive share link..."
+                    className="w-full px-3 py-1.5 border border-stone-300 rounded bg-white focus:ring-1 focus:ring-[#4A0E17] focus:outline-none"
                   />
                 </div>
                 {formPhotoUrl && (
-                  <div className="flex items-center gap-3 pt-1">
+                  <div className="flex items-center gap-3 pt-1 bg-white p-2 rounded border border-stone-200">
                     <img
-                      src={formPhotoUrl}
+                      src={normalizeImageUrl(formPhotoUrl)}
                       alt="Portrait preview"
-                      className="w-11 h-11 rounded-full object-cover border border-stone-300"
+                      referrerPolicy="no-referrer"
+                      onError={handleImageErrorWithDriveFallback}
+                      className="w-12 h-12 rounded-full object-cover border border-[#D4AF37] shrink-0"
                     />
                     <span className="text-stone-600 text-[11px] flex-1 truncate">
-                      Portrait photo attached
+                      Portrait photo attached & preview ready
                     </span>
                     <button
                       type="button"
                       onClick={() => setFormPhotoUrl('')}
-                      className="text-red-600 hover:underline text-[11px]"
+                      className="text-red-600 hover:underline text-[11px] cursor-pointer"
                     >
                       Remove Photo
                     </button>

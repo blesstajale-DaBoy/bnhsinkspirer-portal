@@ -19,6 +19,7 @@ import {
   UserCheck,
 } from 'lucide-react';
 import { Article, StudentAuthorProfile } from '../types';
+import { normalizeImageUrl, handleImageErrorWithDriveFallback } from '../utils/imageUrl';
 
 interface AuthorProfileProps {
   author: string;
@@ -98,7 +99,7 @@ export const AuthorProfile: React.FC<AuthorProfileProps> = ({
     profile?.bio ||
     bio ||
     `Staff writer at Barobo National High School's official student publication, The Inkspirer.`;
-  const resolvedPhoto = profile?.photoUrl || photoUrl || '';
+  const resolvedPhoto = normalizeImageUrl(profile?.photoUrl || photoUrl || '');
   const resolvedMotto = profile?.journalismMotto || journalismMotto || '';
   const resolvedAccolades = profile?.accolades || accolades || [];
   const resolvedEmail = profile?.email || email || '';
@@ -167,6 +168,8 @@ export const AuthorProfile: React.FC<AuthorProfileProps> = ({
       ? [...editAccoladesList, newAccoladeInput.trim()]
       : editAccoladesList;
 
+    const normalizedEditPhoto = normalizeImageUrl(editPhoto);
+
     if (profile && onUpdateAuthorProfile) {
       onUpdateAuthorProfile(
         profile.id,
@@ -177,7 +180,7 @@ export const AuthorProfile: React.FC<AuthorProfileProps> = ({
           beat: editBeat.trim(),
           bio: editBio.trim(),
           journalismMotto: editMotto.trim() || undefined,
-          photoUrl: editPhoto.trim() || undefined,
+          photoUrl: normalizedEditPhoto || undefined,
           email: editEmail.trim() || undefined,
           joinedYear: editJoined.trim() || undefined,
           accolades: finalAccolades,
@@ -192,7 +195,7 @@ export const AuthorProfile: React.FC<AuthorProfileProps> = ({
         beat: editBeat.trim() || 'Campus News & Features',
         bio: editBio.trim(),
         journalismMotto: editMotto.trim() || undefined,
-        photoUrl: editPhoto.trim() || undefined,
+        photoUrl: normalizedEditPhoto || undefined,
         email: editEmail.trim() || undefined,
         joinedYear: editJoined.trim() || 'SY 2025–2026',
         accolades: finalAccolades,
@@ -222,6 +225,8 @@ export const AuthorProfile: React.FC<AuthorProfileProps> = ({
             <img
               src={resolvedPhoto}
               alt={resolvedName}
+              referrerPolicy="no-referrer"
+              onError={handleImageErrorWithDriveFallback}
               className={`w-8 h-8 rounded-full object-cover border ${avatarStyle.border} shadow-xs`}
             />
           ) : (
@@ -277,6 +282,8 @@ export const AuthorProfile: React.FC<AuthorProfileProps> = ({
             <img
               src={resolvedPhoto}
               alt={resolvedName}
+              referrerPolicy="no-referrer"
+              onError={handleImageErrorWithDriveFallback}
               className={`w-11 h-11 rounded-full object-cover border-2 ${avatarStyle.border} shadow-sm`}
             />
           ) : (
@@ -559,25 +566,53 @@ export const AuthorProfile: React.FC<AuthorProfileProps> = ({
           {/* Portrait Photo Upload or URL */}
           <div className="text-xs bg-white p-3 rounded border border-stone-200 space-y-2">
             <label className="font-semibold text-stone-700 flex items-center gap-1.5">
-              <Upload className="w-3.5 h-3.5 text-[#133E87]" />
-              <span>Journalist Portrait Photo (Optional)</span>
+              <Upload className="w-3.5 h-3.5 text-[#4A0E17]" />
+              <span>Student Journalist Portrait Photo (Optional)</span>
             </label>
             <div className="flex flex-col sm:flex-row items-center gap-2">
               <input
                 type="file"
                 accept="image/*"
                 onChange={handlePhotoUpload}
-                className="w-full text-xs text-stone-500 file:mr-2 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-[#0B2545] file:text-white"
+                className="w-full text-xs text-stone-500 file:mr-2 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-[#4A0E17] file:text-white cursor-pointer"
               />
               <span className="text-stone-400">or</span>
               <input
                 type="text"
                 value={editPhoto}
-                onChange={(e) => setEditPhoto(e.target.value)}
-                placeholder="Paste portrait photo URL..."
+                onChange={(e) => setEditPhoto(normalizeImageUrl(e.target.value))}
+                onPaste={(e) => {
+                  const pasted = e.clipboardData.getData('text');
+                  if (pasted) {
+                    e.preventDefault();
+                    setEditPhoto(normalizeImageUrl(pasted));
+                  }
+                }}
+                placeholder="Paste image URL or Google Drive share link..."
                 className="w-full px-2.5 py-1 border border-stone-300 rounded text-xs"
               />
             </div>
+            {editPhoto && (
+              <div className="flex items-center gap-3 pt-1">
+                <img
+                  src={normalizeImageUrl(editPhoto)}
+                  alt="Portrait preview"
+                  referrerPolicy="no-referrer"
+                  onError={handleImageErrorWithDriveFallback}
+                  className="w-11 h-11 rounded-full object-cover border border-[#D4AF37]"
+                />
+                <span className="text-stone-600 text-[11px] flex-1 truncate">
+                  Portrait photo attached & preview ready
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setEditPhoto('')}
+                  className="text-red-600 hover:underline text-[11px]"
+                >
+                  Remove Photo
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center justify-end gap-2 pt-2 border-t border-stone-200">
@@ -607,6 +642,8 @@ export const AuthorProfile: React.FC<AuthorProfileProps> = ({
                 <img
                   src={resolvedPhoto}
                   alt={resolvedName}
+                  referrerPolicy="no-referrer"
+                  onError={handleImageErrorWithDriveFallback}
                   className={`w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover border-2 ${avatarStyle.border} shadow-md`}
                 />
               ) : (

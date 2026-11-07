@@ -1,5 +1,6 @@
 import React from 'react';
 import { Category } from '../types';
+import { normalizeImageUrl, handleImageErrorWithDriveFallback } from '../utils/imageUrl';
 
 interface EditorialArtworkProps {
   category: Category;
@@ -14,13 +15,16 @@ export const EditorialArtwork: React.FC<EditorialArtworkProps> = ({
   variant = 'card',
   customImageUrl,
 }) => {
-  if (customImageUrl) {
+  const resolvedCustomImageUrl = normalizeImageUrl(customImageUrl);
+
+  if (resolvedCustomImageUrl) {
     return (
       <div className={`relative overflow-hidden bg-stone-100 ${className}`}>
         <img
-          src={customImageUrl}
+          src={resolvedCustomImageUrl}
           alt={`${category} article visual`}
           referrerPolicy="no-referrer"
+          onError={handleImageErrorWithDriveFallback}
           className="w-full h-full object-cover transition-transform duration-500 hover:scale-105"
         />
       </div>
