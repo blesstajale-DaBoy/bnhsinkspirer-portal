@@ -12,6 +12,7 @@ import {
   Check,
   Volume2,
   VolumeX,
+  MessageSquare,
 } from 'lucide-react';
 import { Article, StudentAuthorProfile } from '../types';
 import { EditorialArtwork } from './EditorialArtwork';
@@ -62,8 +63,10 @@ export const ArticleReaderModal: React.FC<ArticleReaderModalProps> = ({
   const [copiedShare, setCopiedShare] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [readingProgress, setReadingProgress] = useState(0);
+  const [commentCount, setCommentCount] = useState(0);
   const outerContainerRef = useRef<HTMLDivElement>(null);
   const articleBodyRef = useRef<HTMLDivElement>(null);
+  const commentsSectionRef = useRef<HTMLDivElement>(null);
 
   // Reset or restore reading progress and scroll position when opening an article
   useEffect(() => {
@@ -191,6 +194,12 @@ export const ArticleReaderModal: React.FC<ArticleReaderModalProps> = ({
     );
     setCopiedShare(true);
     setTimeout(() => setCopiedShare(false), 2500);
+  };
+
+  const handleScrollToComments = () => {
+    if (commentsSectionRef.current) {
+      commentsSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   };
 
   const handleSpeechToggle = () => {
@@ -364,6 +373,17 @@ export const ArticleReaderModal: React.FC<ArticleReaderModalProps> = ({
               ) : (
                 <Share2 className="w-4 h-4" />
               )}
+            </button>
+
+            {/* Jump to Comments */}
+            <button
+              type="button"
+              onClick={handleScrollToComments}
+              className="px-2 py-1.5 rounded text-stone-600 hover:text-[#4A0E17] hover:bg-stone-100 transition-colors inline-flex items-center gap-1 cursor-pointer"
+              title="Jump to campus comments and feedback"
+            >
+              <MessageSquare className="w-4 h-4" />
+              <span className="text-xs font-semibold tabular-nums">{commentCount}</span>
             </button>
 
             {/* Like */}
@@ -541,7 +561,18 @@ export const ArticleReaderModal: React.FC<ArticleReaderModalProps> = ({
                 </p>
               </div>
 
-              <div className="flex items-center gap-2.5 shrink-0">
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleScrollToComments}
+                  className="px-3.5 py-2 text-xs font-semibold rounded flex items-center gap-1.5 transition-colors bg-[#4A0E17]/10 text-[#4A0E17] hover:bg-[#4A0E17]/15 border border-[#4A0E17]/20 cursor-pointer"
+                >
+                  <MessageSquare className="w-3.5 h-3.5 text-[#4A0E17]" />
+                  <span className="tabular-nums">
+                    {commentCount} {commentCount === 1 ? 'Comment' : 'Comments'}
+                  </span>
+                </button>
+
                 <button
                   onClick={(e) => onToggleLike(article.id, e)}
                   className={`px-3.5 py-2 text-xs font-semibold rounded flex items-center gap-1.5 transition-colors ${
@@ -569,7 +600,13 @@ export const ArticleReaderModal: React.FC<ArticleReaderModalProps> = ({
             </div>
 
             {/* Reader Comments & Interactive Community Discussion */}
-            <ArticleComments articleId={article.id} articleTitle={article.title} />
+            <div ref={commentsSectionRef}>
+              <ArticleComments
+                articleId={article.id}
+                articleTitle={article.title}
+                onCommentCountChange={setCommentCount}
+              />
+            </div>
           </div>
           </div>
         </div>

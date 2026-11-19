@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Article, Announcement, Category, StudentAuthorProfile } from '../types';
 import { StoryCard } from './StoryCard';
-import { Calendar, Bell, AlertTriangle, FileText, Sparkles, Feather, Edit3, X, CheckCircle2 } from 'lucide-react';
+import { Calendar, Bell, FileText, Feather } from 'lucide-react';
 
 interface StoryGridProps {
   articles: Article[];
@@ -16,7 +16,6 @@ interface StoryGridProps {
   onOpenSubmit: () => void;
   onResetFilters: () => void;
   showingBookmarks: boolean;
-  onUpdateAnnouncement?: (id: string, updated: Partial<Announcement>) => void;
   authorProfiles?: StudentAuthorProfile[];
 }
 
@@ -33,42 +32,8 @@ export const StoryGrid: React.FC<StoryGridProps> = ({
   onOpenSubmit,
   onResetFilters,
   showingBookmarks,
-  onUpdateAnnouncement,
   authorProfiles = [],
 }) => {
-  const [editingNotice, setEditingNotice] = useState<Announcement | null>(null);
-  const [editTitle, setEditTitle] = useState('');
-  const [editType, setEditType] = useState<Announcement['type']>('Academic');
-  const [editDeadline, setEditDeadline] = useState('');
-  const [editLocation, setEditLocation] = useState('');
-  const [editUrgent, setEditUrgent] = useState(false);
-  const [editContent, setEditContent] = useState('');
-
-  const handleOpenEditNotice = (ann: Announcement) => {
-    setEditingNotice(ann);
-    setEditTitle(ann.title);
-    setEditType(ann.type);
-    setEditDeadline(ann.deadline || '');
-    setEditLocation(ann.location || '');
-    setEditUrgent(Boolean(ann.urgent || ann.isPinned));
-    setEditContent(ann.content);
-  };
-
-  const handleSaveNotice = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingNotice || !editTitle.trim() || !editContent.trim()) return;
-    onUpdateAnnouncement?.(editingNotice.id, {
-      title: editTitle.trim(),
-      type: editType,
-      deadline: editDeadline.trim() || undefined,
-      location: editLocation.trim() || undefined,
-      urgent: editUrgent,
-      isPinned: editUrgent,
-      content: editContent.trim(),
-    });
-    setEditingNotice(null);
-  };
-
   // If user selected Announcements / Announcement category or search matches announcements
   const isAnnouncementsMenu =
     activeCategory.toLowerCase() === 'announcements' ||
@@ -130,17 +95,6 @@ export const StoryGrid: React.FC<StoryGridProps> = ({
                           Pinned Bulletin
                         </span>
                       )}
-                      {onUpdateAnnouncement && (
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEditNotice(ann)}
-                          className="px-2.5 py-1 text-xs font-semibold text-[#0B2545] bg-stone-100 hover:bg-[#0B2545] hover:text-white rounded transition-colors inline-flex items-center gap-1 cursor-pointer"
-                          title={`Edit ${ann.type} Notice`}
-                        >
-                          <Edit3 className="w-3 h-3" />
-                          <span>Edit</span>
-                        </button>
-                      )}
                     </div>
                   </div>
 
@@ -172,131 +126,6 @@ export const StoryGrid: React.FC<StoryGridProps> = ({
                 )}
               </div>
             ))}
-          </div>
-        )}
-
-        {/* Edit Notice Modal */}
-        {editingNotice && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-            <div className="bg-white rounded-lg shadow-2xl max-w-lg w-full p-6 border border-stone-200 text-[#1C1917]">
-              <form onSubmit={handleSaveNotice} className="space-y-4">
-                <div className="flex items-center justify-between border-b border-stone-200 pb-3">
-                  <div className="flex items-center gap-2">
-                    <Edit3 className="w-4 h-4 text-[#0B2545]" />
-                    <h3 className="font-serif text-lg font-bold text-stone-900">
-                      Edit {editType} Notice
-                    </h3>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setEditingNotice(null)}
-                    className="p-1 rounded text-stone-400 hover:text-stone-600"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="sm:col-span-2">
-                    <label className="block text-xs font-semibold text-stone-700 mb-1">
-                      Notice Title *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={editTitle}
-                      onChange={(e) => setEditTitle(e.target.value)}
-                      className="w-full px-3 py-1.5 text-xs border border-stone-300 rounded focus:ring-1 focus:ring-[#0B2545] focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-stone-700 mb-1">
-                      Bulletin Category
-                    </label>
-                    <select
-                      value={editType}
-                      onChange={(e) => setEditType(e.target.value as Announcement['type'])}
-                      className="w-full px-3 py-1.5 text-xs border border-stone-300 rounded bg-white focus:ring-1 focus:ring-[#0B2545] focus:outline-none font-medium"
-                    >
-                      <option value="Academic">Academic Notice</option>
-                      <option value="Press">Press Conference</option>
-                      <option value="Event">Campus Event</option>
-                      <option value="Urgent">Urgent / Safety</option>
-                      <option value="General">General Notice</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-stone-700 mb-1">
-                      Effective Date or Deadline
-                    </label>
-                    <input
-                      type="text"
-                      value={editDeadline}
-                      onChange={(e) => setEditDeadline(e.target.value)}
-                      placeholder="e.g. November 6–7, 2026"
-                      className="w-full px-3 py-1.5 text-xs border border-stone-300 rounded focus:ring-1 focus:ring-[#0B2545] focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-stone-700 mb-1">
-                      Venue or Location
-                    </label>
-                    <input
-                      type="text"
-                      value={editLocation}
-                      onChange={(e) => setEditLocation(e.target.value)}
-                      placeholder="e.g. All BNHS Classrooms"
-                      className="w-full px-3 py-1.5 text-xs border border-stone-300 rounded focus:ring-1 focus:ring-[#0B2545] focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-medium text-stone-700">
-                    <input
-                      type="checkbox"
-                      checked={editUrgent}
-                      onChange={(e) => setEditUrgent(e.target.checked)}
-                      className="rounded border-stone-300 text-red-600 focus:ring-red-500"
-                    />
-                    <span>Pin to Top as Urgent Notice</span>
-                  </label>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-stone-700 mb-1">
-                    Notice Details & Instructions *
-                  </label>
-                  <textarea
-                    required
-                    rows={4}
-                    value={editContent}
-                    onChange={(e) => setEditContent(e.target.value)}
-                    className="w-full px-3 py-1.5 text-xs border border-stone-300 rounded focus:ring-1 focus:ring-[#0B2545] focus:outline-none"
-                  />
-                </div>
-
-                <div className="flex items-center justify-end gap-2 pt-3 border-t border-stone-200">
-                  <button
-                    type="button"
-                    onClick={() => setEditingNotice(null)}
-                    className="px-4 py-2 text-xs font-semibold text-stone-600 bg-stone-100 hover:bg-stone-200 rounded transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-4 py-2 text-xs font-bold text-white bg-[#0B2545] hover:bg-[#133E87] rounded transition-colors inline-flex items-center gap-1.5"
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Save Notice Changes</span>
-                  </button>
-                </div>
-              </form>
-            </div>
           </div>
         )}
       </div>

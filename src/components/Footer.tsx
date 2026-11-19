@@ -1,13 +1,12 @@
 import React from 'react';
 import { Category, PublicationCategory, PublicationEditionConfig } from '../types';
-import { Feather, Download, Printer, Shield, BookOpen } from 'lucide-react';
+import { Feather, Shield, BookOpen } from 'lucide-react';
 import { NewsletterSignup } from './NewsletterSignup';
 import { InkspirerLogo } from './InkspirerLogo';
 
 interface FooterProps {
   onSelectCategory: (cat: Category | 'All') => void;
   onOpenSubmit: () => void;
-  onOpenDownloadPortal: () => void;
   onOpenEditorialDesk: () => void;
   categories?: PublicationCategory[];
   editionConfig?: PublicationEditionConfig;
@@ -16,7 +15,6 @@ interface FooterProps {
 export const Footer: React.FC<FooterProps> = ({
   onSelectCategory,
   onOpenSubmit,
-  onOpenDownloadPortal,
   onOpenEditorialDesk,
   categories,
   editionConfig,
@@ -125,17 +123,6 @@ export const Footer: React.FC<FooterProps> = ({
                   <span>Submit a Story Proposal</span>
                 </span>
                 <span className="text-[11px] text-stone-400">Export .txt</span>
-              </button>
-
-              <button
-                onClick={onOpenDownloadPortal}
-                className="w-full text-left px-3 py-2 text-xs font-medium bg-white/5 hover:bg-white/10 rounded transition-colors flex items-center justify-between text-white"
-              >
-                <span className="flex items-center gap-2">
-                  <Download className="w-3.5 h-3.5 text-[#D4AF37]" />
-                  <span>Download Standalone Website (HTML)</span>
-                </span>
-                <span className="text-[11px] text-stone-400">Offline</span>
               </button>
 
               <button

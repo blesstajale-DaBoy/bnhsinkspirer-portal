@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
@@ -6,9 +6,13 @@ import {
   Clock,
   Pause,
   Play,
+  Volume2,
+  VolumeX,
+  Film,
 } from 'lucide-react';
 import { Article, PublicationCategory } from '../types';
 import { normalizeImageUrl, handleImageErrorWithDriveFallback } from '../utils/imageUrl';
+import { parseVideoUrl, ParsedVideoMedia } from '../utils/videoUrl';
 import { EditorialArtwork } from './EditorialArtwork';
 
 interface CategoryStorySliderProps {
@@ -18,6 +22,7 @@ interface CategoryStorySliderProps {
 }
 
 const SLIDE_INTERVAL_MS = 20000; // 20 seconds as requested
+const TIMER_TICK_MS = 100; // Smooth 10fps progress bar updates
 
 const CATEGORY_BADGE_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   news: { bg: '#FB923C', text: '#2D1204', border: '#FDBA74' },
@@ -41,11 +46,13 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [isMuted, setIsMuted] = useState(true);
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const elapsedMsRef = useRef(0);
 
   // Build ordered slides from articles across NEWS, FEATURES, OPINION, SPORTS (and any custom categories)
-  // Interleaves the top story of News, Features, Opinion, Sports first (prioritizing posts with uploaded photos),
-  // followed by any remaining posts so every category and uploaded story photo is showcased.
+  // Interleaves the top story of News, Features, Opinion, Sports first (prioritizing posts with uploaded videos or photos),
+  // followed by any remaining posts so every category and uploaded story media is showcased.
   const slides = useMemo(() => {
     if (!articles || articles.length === 0) return [];
 
@@ -59,19 +66,24 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
       );
     const orderedCategories = [...coreCategoryOrder, ...dynamicCatNames];
 
-    // Sort helper: prioritize articles that have an explicit uploaded imageUrl
+    // Sort helper: prioritize articles that have an explicit uploaded videoUrl or imageUrl
     const sortWithUploadedFirst = (list: Article[]) => {
       return [...list].sort((a, b) => {
-        const aHasImg = Boolean(a.imageUrl && a.imageUrl.trim());
-        const bHasImg = Boolean(b.imageUrl && b.imageUrl.trim());
-        if (aHasImg && !bHasImg) return -1;
-        if (!aHasImg && bHasImg) return 1;
+        const aHasMedia = Boolean((a.videoUrl && a.videoUrl.trim()) || (a.imageUrl && a.imageUrl.trim()));
+        const bHasMedia = Boolean((b.videoUrl && b.videoUrl.trim()) || (b.imageUrl && b.imageUrl.trim()));
+        if (aHasMedia && !bHasMedia) return -1;
+        if (!aHasMedia && bHasMedia) return 1;
         return 0;
       });
     };
 
     const usedIds = new Set<string>();
-    const result: { article: Article; resolvedImageUrl: string; categoryColor: string }[] = [];
+    const result: {
+      article: Article;
+      resolvedImageUrl: string;
+      parsedVideo: ParsedVideoMedia | null;
+      categoryColor: string;
+    }[] = [];
 
     const getCategoryMeta = (catName: string) => {
       const matchedCat = categories.find(
@@ -99,12 +111,13 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
         result.push({
           article: topArt,
           resolvedImageUrl: normalizeImageUrl(topArt.imageUrl) || catImg,
+          parsedVideo: parseVideoUrl(topArt.videoUrl),
           categoryColor: color,
         });
       }
     });
 
-    // Pass 2: Any remaining articles that have uploaded photos or belong to the publication
+    // Pass 2: Any remaining articles
     const remainingArticles = sortWithUploadedFirst(
       articles.filter((a) => !usedIds.has(a.id))
     );
@@ -114,6 +127,7 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
       result.push({
         article: art,
         resolvedImageUrl: normalizeImageUrl(art.imageUrl) || catImg,
+        parsedVideo: parseVideoUrl(art.videoUrl),
         categoryColor: color,
       });
     });
@@ -128,19 +142,21 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
     }
   }, [slides.length, currentIndex]);
 
-  // 20-second automatic slide timer (ticks every 1s to drive progress bar & switches at 20s)
+  // 20-second automatic slide timer (ticks every 100ms for smooth progress bar & countdown)
   useEffect(() => {
     if (slides.length <= 1 || isPaused) return;
 
     const timer = setInterval(() => {
-      setElapsedSeconds((prev) => {
-        if (prev + 1 >= SLIDE_INTERVAL_MS / 1000) {
-          setCurrentIndex((curr) => (curr + 1) % slides.length);
-          return 0;
-        }
-        return prev + 1;
-      });
-    }, 1000);
+      const nextElapsed = elapsedMsRef.current + TIMER_TICK_MS;
+      if (nextElapsed >= SLIDE_INTERVAL_MS) {
+        elapsedMsRef.current = 0;
+        setElapsedMs(0);
+        setCurrentIndex((curr) => (curr + 1) % slides.length);
+      } else {
+        elapsedMsRef.current = nextElapsed;
+        setElapsedMs(nextElapsed);
+      }
+    }, TIMER_TICK_MS);
 
     return () => clearInterval(timer);
   }, [slides.length, isPaused]);
@@ -149,13 +165,15 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
     if (slides.length === 0) return;
     const nextIndex = (index + slides.length) % slides.length;
     setCurrentIndex(nextIndex);
-    setElapsedSeconds(0);
+    elapsedMsRef.current = 0;
+    setElapsedMs(0);
   };
 
   if (slides.length === 0) return null;
 
   const activeSlide = slides[currentIndex] || slides[0];
-  const { article, resolvedImageUrl, categoryColor } = activeSlide;
+  const nextSlide = slides.length > 1 ? slides[(currentIndex + 1) % slides.length] : null;
+  const { article, resolvedImageUrl, parsedVideo, categoryColor } = activeSlide;
   const badgeStyle =
     CATEGORY_BADGE_COLORS[article.category.toLowerCase()] || {
       bg: categoryColor,
@@ -163,7 +181,12 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
       border: categoryColor,
     };
 
-  const progressPercentage = ((elapsedSeconds / (SLIDE_INTERVAL_MS / 1000)) * 100).toFixed(1);
+  const totalSeconds = SLIDE_INTERVAL_MS / 1000;
+  const remainingSeconds = Math.max(
+    1,
+    Math.min(totalSeconds, Math.ceil((SLIDE_INTERVAL_MS - elapsedMs) / 1000))
+  );
+  const progressPercentage = Math.min(100, Math.max(0, (elapsedMs / SLIDE_INTERVAL_MS) * 100));
 
   return (
     <section
@@ -185,6 +208,23 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Mute/Unmute toggle when active slide is a YouTube or direct video */}
+            {parsedVideo && parsedVideo.type !== 'gdrive' && (
+              <button
+                type="button"
+                onClick={() => setIsMuted((prev) => !prev)}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#28050B] border border-[#58111A] text-stone-200 hover:text-white transition-colors text-[11px] cursor-pointer"
+                title={isMuted ? 'Unmute video sound' : 'Mute video sound'}
+              >
+                {isMuted ? (
+                  <VolumeX className="w-3 h-3 text-amber-300" />
+                ) : (
+                  <Volume2 className="w-3 h-3 text-emerald-400" />
+                )}
+                <span>{isMuted ? 'Unmute' : 'Sound On'}</span>
+              </button>
+            )}
+
             {/* 20s Auto-Slide status & pause/play toggle */}
             <button
               type="button"
@@ -200,48 +240,84 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
               <Clock className="w-3 h-3 text-stone-400" />
               <span className="tabular-nums">
                 {isPaused
-                  ? 'Paused (20s interval)'
-                  : `Next slide in ${Math.max(1, 20 - elapsedSeconds)}s`}
+                  ? `Paused · ${remainingSeconds}s left`
+                  : `Next slide in ${remainingSeconds}s`}
               </span>
             </button>
           </div>
         </div>
 
-        {/* 1000 by 500 Sliding Picture Container */}
+        {/* 1000 by 500 Sliding Picture / Video Container */}
         <div
           className="relative w-full max-w-[1000px] h-[300px] sm:h-[420px] md:h-[500px] mx-auto rounded-lg overflow-hidden border border-[#6B1420] shadow-2xl bg-[#1E0307] group select-none"
         >
-          {/* Slide Picture (1000 x 500) */}
-          <div
-            onClick={() => onSelectArticle(article)}
-            className="w-full h-full cursor-pointer relative overflow-hidden"
-            title={`Click to open post: ${article.title}`}
-          >
-            {resolvedImageUrl ? (
-              <img
-                key={`${article.id}-${resolvedImageUrl}`}
-                src={resolvedImageUrl}
-                alt={article.title}
-                referrerPolicy="no-referrer"
-                onError={handleImageErrorWithDriveFallback}
-                className="w-full h-full object-cover object-center transition-transform duration-700 group-hover:scale-[1.03]"
-              />
-            ) : (
-              <EditorialArtwork
-                category={article.category}
-                customImageUrl={article.imageUrl}
-                className="w-full h-full"
-                variant="lead"
-              />
-            )}
+          {/* Slide Media: Video (YouTube / Google Drive / Direct .mp4) OR Picture (1000 x 500) */}
+          {parsedVideo ? (
+            <div className="w-full h-full relative overflow-hidden bg-black">
+              {parsedVideo.type === 'direct' && parsedVideo.directUrl ? (
+                <video
+                  key={`${article.id}-${parsedVideo.directUrl}`}
+                  src={parsedVideo.directUrl}
+                  poster={resolvedImageUrl || undefined}
+                  autoPlay
+                  muted={isMuted}
+                  loop
+                  playsInline
+                  onClick={() => onSelectArticle(article)}
+                  className="w-full h-full object-cover object-center cursor-pointer"
+                />
+              ) : (
+                <iframe
+                  key={`${article.id}-${parsedVideo.type}-${isMuted ? 'muted' : 'sound'}-${parsedVideo.embedUrl}`}
+                  src={
+                    parsedVideo.type === 'youtube'
+                      ? isMuted
+                        ? parsedVideo.mutedEmbedUrl
+                        : parsedVideo.unmutedEmbedUrl
+                      : parsedVideo.embedUrl
+                  }
+                  title={article.title}
+                  className="w-full h-full border-0"
+                  allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+                  allowFullScreen
+                />
+              )}
 
-            {/* Editorial dark vignette & bottom gradient overlay for headline legibility */}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/45 to-black/15 pointer-events-none" />
-          </div>
+              {/* Bottom gradient overlay ONLY in lower region so video controls stay usable while headline remains crisp */}
+              <div className="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-black/95 via-black/70 to-transparent pointer-events-none" />
+            </div>
+          ) : (
+            <div
+              onClick={() => onSelectArticle(article)}
+              className="w-full h-full cursor-pointer relative overflow-hidden"
+              title={`Click to open post: ${article.title}`}
+            >
+              {resolvedImageUrl ? (
+                <img
+                  key={`${article.id}-${resolvedImageUrl}`}
+                  src={resolvedImageUrl}
+                  alt={article.title}
+                  referrerPolicy="no-referrer"
+                  onError={handleImageErrorWithDriveFallback}
+                  className="w-full h-full object-cover object-center transition-transform duration-700 group-hover:scale-[1.03]"
+                />
+              ) : (
+                <EditorialArtwork
+                  category={article.category}
+                  customImageUrl={article.imageUrl}
+                  className="w-full h-full"
+                  variant="lead"
+                />
+              )}
 
-          {/* Top-Left Category Badge & Slide Counter */}
-          <div className="absolute top-4 left-4 right-4 flex items-center justify-between pointer-events-none">
-            <div className="flex items-center gap-2 pointer-events-auto">
+              {/* Editorial dark vignette & bottom gradient overlay for headline legibility */}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/45 to-black/15 pointer-events-none" />
+            </div>
+          )}
+
+          {/* Top-Left Category Badge, Video Tag & Slide Counter */}
+          <div className="absolute top-4 left-4 right-4 flex items-center justify-between pointer-events-none z-10">
+            <div className="flex flex-wrap items-center gap-2 pointer-events-auto">
               <span
                 className="px-3 py-1 rounded text-xs font-extrabold uppercase tracking-wider shadow-md border"
                 style={{
@@ -252,6 +328,12 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
               >
                 {article.category}
               </span>
+              {parsedVideo && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-[#4A0E17]/90 text-[#F3C562] text-[11px] font-bold uppercase tracking-wider border border-[#D4AF37]/60 shadow-md">
+                  <Film className="w-3 h-3" />
+                  <span>{parsedVideo.label}</span>
+                </span>
+              )}
               <span className="px-2.5 py-1 rounded bg-black/65 backdrop-blur-xs text-[11px] font-medium text-stone-200 border border-white/15">
                 {article.issue} · {article.date}
               </span>
@@ -291,8 +373,8 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
           )}
 
           {/* Bottom Headline / Title Overlay — Clicking Title Automatically Links to the Post */}
-          <div className="absolute bottom-0 inset-x-0 p-5 sm:p-8 z-10 flex flex-col justify-end">
-            <div className="max-w-3xl">
+          <div className="absolute bottom-0 inset-x-0 p-5 sm:p-7 z-10 flex flex-col justify-end pointer-events-none">
+            <div className="max-w-3xl pointer-events-auto">
               <div className="flex items-center gap-2 text-xs text-[#F3C562] font-semibold uppercase tracking-wider mb-1.5">
                 <span>By {article.author}</span>
                 <span aria-hidden="true">·</span>
@@ -304,7 +386,7 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
                 <button
                   type="button"
                   onClick={() => onSelectArticle(article)}
-                  className="text-left font-serif text-xl sm:text-3xl md:text-4xl font-bold text-white hover:text-[#F3C562] hover:underline decoration-[#F3C562]/80 underline-offset-4 leading-tight tracking-tight transition-colors cursor-pointer group/title"
+                  className="text-left font-serif text-xl sm:text-3xl md:text-4xl font-bold text-white hover:text-[#F3C562] hover:underline decoration-[#F3C562]/80 underline-offset-4 leading-tight tracking-tight transition-colors cursor-pointer group/title drop-shadow-md"
                 >
                   <span>{article.title}</span>
                   <ArrowUpRight className="inline-block w-5 h-5 sm:w-6 sm:h-6 ml-1.5 text-[#F3C562] transition-transform group-hover/title:translate-x-0.5 group-hover/title:-translate-y-0.5" />
@@ -313,26 +395,28 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
 
               <p
                 onClick={() => onSelectArticle(article)}
-                className="mt-2 text-xs sm:text-sm text-stone-200 line-clamp-2 leading-relaxed cursor-pointer hover:text-white transition-colors"
+                className="mt-1.5 text-xs sm:text-sm text-stone-200 line-clamp-2 leading-relaxed cursor-pointer hover:text-white transition-colors drop-shadow-xs"
               >
                 {article.deck}
               </p>
             </div>
           </div>
 
-          {/* 20-Second Progress Bar at very bottom edge of the 1000x500 frame */}
-          <div className="absolute bottom-0 inset-x-0 h-1 bg-white/15 z-20">
-            <div
-              className="h-full transition-all duration-1000 ease-linear"
-              style={{
-                width: `${progressPercentage}%`,
-                backgroundColor: badgeStyle.bg,
-              }}
-            />
-          </div>
+          {/* Smooth 20-Second Progress Accent Bar along the bottom edge of the 1000x500 frame */}
+          {slides.length > 1 && (
+            <div className="absolute bottom-0 inset-x-0 h-1.5 bg-black/50 backdrop-blur-xs z-20">
+              <div
+                className="h-full transition-[width] duration-100 ease-linear"
+                style={{
+                  width: `${progressPercentage}%`,
+                  backgroundColor: isPaused ? '#A8A29E' : badgeStyle.bg,
+                }}
+              />
+            </div>
+          )}
         </div>
 
-        {/* Category & Post Slide Selector Strip Below the 1000x500 Picture */}
+        {/* Category & Post Slide Selector Strip Below the 1000x500 Picture/Video */}
         <div className="mt-3 flex items-center justify-between gap-2 overflow-x-auto pb-1 scrollbar-none">
           <div className="flex items-center gap-1.5">
             {slides.map((s, idx) => {
@@ -353,12 +437,13 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
                       ? 'bg-[#4A0E17] text-white border-[#D4AF37] shadow-xs'
                       : 'bg-[#28050B]/90 text-stone-400 border-[#58111A] hover:text-stone-200 hover:border-stone-600'
                   }`}
-                  title={`${s.article.category}: ${s.article.title}`}
+                  title={`${s.article.category}${s.parsedVideo ? ' (Video)' : ''}: ${s.article.title}`}
                 >
                   <span
                     className="w-2 h-2 rounded-full shrink-0"
                     style={{ backgroundColor: catStyle.bg }}
                   />
+                  {s.parsedVideo && <Film className="w-3 h-3 text-[#F3C562] shrink-0" />}
                   <span className="uppercase tracking-wider text-[10px] font-bold">
                     {s.article.category}
                   </span>
@@ -370,6 +455,77 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
             })}
           </div>
         </div>
+
+        {/* Bottom Visual Progress Bar & Auto-Advance Countdown Indicator */}
+        {slides.length > 1 && (
+          <div className="mt-2.5 rounded-md bg-[#28050B]/90 border border-[#58111A] px-3.5 py-2.5 shadow-inner">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2 text-[11px]">
+              <div className="flex items-center gap-2 min-w-0">
+                <button
+                  type="button"
+                  onClick={() => setIsPaused((prev) => !prev)}
+                  className="inline-flex items-center justify-center w-6 h-6 rounded bg-[#38080F] border border-[#6B1420] text-[#F3C562] hover:bg-[#4A0E17] hover:text-white transition-colors shrink-0 cursor-pointer"
+                  aria-label={isPaused ? 'Resume slideshow countdown' : 'Pause slideshow countdown'}
+                  title={isPaused ? 'Resume slideshow' : 'Pause slideshow'}
+                >
+                  {isPaused ? (
+                    <Play className="w-3 h-3 text-[#84CC16]" />
+                  ) : (
+                    <Pause className="w-3 h-3 text-[#F3C562]" />
+                  )}
+                </button>
+
+                <span className="flex items-center gap-1.5 text-stone-300 font-medium truncate">
+                  <Clock className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" />
+                  <span className="tabular-nums font-semibold text-white">
+                    {isPaused
+                      ? `Slideshow paused (${remainingSeconds}s remaining)`
+                      : `Auto-advancing in ${remainingSeconds}s`}
+                  </span>
+                  {nextSlide && (
+                    <span className="hidden sm:inline text-stone-400 truncate">
+                      · Up next:{' '}
+                      <strong className="text-stone-200 uppercase text-[10px] tracking-wider">
+                        {nextSlide.article.category}
+                      </strong>{' '}
+                      — {nextSlide.article.title}
+                    </span>
+                  )}
+                </span>
+              </div>
+
+              <span className="font-mono text-[11px] tabular-nums text-[#F3C562] shrink-0">
+                {String(remainingSeconds).padStart(2, '0')}s / {totalSeconds}s
+              </span>
+            </div>
+
+            <div
+              role="progressbar"
+              aria-label="Time remaining before next slide"
+              aria-valuemin={0}
+              aria-valuemax={totalSeconds}
+              aria-valuenow={Math.round(elapsedMs / 1000)}
+              aria-valuetext={
+                isPaused
+                  ? `Paused with ${remainingSeconds} seconds remaining`
+                  : `${remainingSeconds} seconds remaining before next slide`
+              }
+              className="relative h-2 w-full rounded-full bg-[#160205] border border-[#58111A]/80 overflow-hidden"
+            >
+              <div
+                className="h-full rounded-full transition-[width] duration-100 ease-linear relative"
+                style={{
+                  width: `${progressPercentage}%`,
+                  backgroundColor: isPaused ? '#A8A29E' : badgeStyle.bg,
+                }}
+              >
+                {!isPaused && progressPercentage > 1 && (
+                  <span className="absolute right-0 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.9)]" />
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </section>
   );

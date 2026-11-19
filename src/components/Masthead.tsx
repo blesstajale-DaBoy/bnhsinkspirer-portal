@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  Download,
   Feather,
   Bookmark,
   Printer,
@@ -19,7 +18,6 @@ import { PhilippineTimeWeatherWidget } from './PhilippineTimeWeatherWidget';
 
 interface MastheadProps {
   onOpenSubmit: () => void;
-  onOpenDownloadPortal: () => void;
   onOpenEditorialDesk: () => void;
   onScrollToStories: () => void;
   bookmarksCount: number;
@@ -47,7 +45,6 @@ const DEFAULT_MASTHEAD_MENUS: { id: string; name: string; color: string; descrip
 
 export const Masthead: React.FC<MastheadProps> = ({
   onOpenSubmit,
-  onOpenDownloadPortal,
   onOpenEditorialDesk,
   onScrollToStories,
   bookmarksCount,
@@ -194,15 +191,6 @@ export const Masthead: React.FC<MastheadProps> = ({
           >
             <ShieldCheck className="w-4 h-4 text-[#4A0E17]" />
             <span>Editorial Desk & Categories</span>
-          </button>
-
-          <button
-            onClick={onOpenDownloadPortal}
-            className="px-4 py-2.5 text-xs sm:text-sm font-medium text-stone-200 bg-[#3B0910] border border-[#58111A] rounded hover:bg-[#480D15] transition-colors flex items-center gap-2 cursor-pointer"
-            title="Download offline website file"
-          >
-            <Download className="w-4 h-4 text-[#D4AF37]" />
-            <span>Download Portal (HTML)</span>
           </button>
 
           {bookmarksCount > 0 && (

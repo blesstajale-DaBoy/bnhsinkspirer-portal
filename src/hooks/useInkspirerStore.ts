@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Article,
   Announcement,
@@ -8,6 +8,8 @@ import {
   PublicationCategory,
   StudentAuthorProfile,
   PublicationEditionConfig,
+  PortalAdviserConfig,
+  AdviserHandoverRecord,
   generateIssnForVolumeIssue,
 } from '../types';
 import {
@@ -23,9 +25,10 @@ import {
   doc,
   setDoc,
   deleteDoc,
+  getDoc,
   onSnapshot,
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, OperationType, buildFirestoreErrorInfo } from '../lib/firebase';
 
 const STORAGE_KEYS = {
   ARTICLES: 'the_inkspirer_articles_v1',
@@ -38,6 +41,9 @@ const STORAGE_KEYS = {
   CATEGORIES: 'the_inkspirer_categories_v1',
   AUTHOR_PROFILES: 'the_inkspirer_author_profiles_v1',
   EDITION_CONFIG: 'the_inkspirer_edition_config_v1',
+  ACTIVE_ADVISER: 'the_inkspirer_active_adviser_v1',
+  HANDOVER_LOG: 'the_inkspirer_adviser_handover_log_v1',
+  AUTO_SYNC: 'the_inkspirer_auto_sync_v1',
 };
 
 const DEFAULT_EDITION_CONFIG: PublicationEditionConfig = {
@@ -49,6 +55,19 @@ const DEFAULT_EDITION_CONFIG: PublicationEditionConfig = {
   taglineDescription:
     'Campus news, student perspectives, inspiring features, sports highlights, and school announcements—all in one place.',
 };
+
+const DEFAULT_ACTIVE_ADVISER: PortalAdviserConfig = {
+  id: 'staff-1',
+  name: 'Mrs. Maria Elena V. Delos Reyes',
+  email: 'm.reyes@bnhs.deped.edu.ph',
+  role: 'School Publication Adviser',
+  designation: 'Master Teacher II - English Department',
+  department: 'Adviser & Editorial Consultant',
+  pinCode: '1991',
+  appointedDate: 'August 2024',
+};
+
+export type CloudSyncStatus = 'synced' | 'syncing' | 'error';
 
 function stripUndefined<T>(obj: T): T {
   if (Array.isArray(obj)) {
@@ -93,39 +112,118 @@ function sortArticlesNewestFirst(list: Article[]): Article[] {
   });
 }
 
-function prepareFirestorePayload(data: Record<string, any>): Record<string, any> {
-  const cleaned = stripUndefined(data);
-  // Firestore documents have a strict 1 MiB limit; if a base64 image is still > 750KB, omit the raw base64 only in the cloud copy while keeping it in state/localStorage
-  try {
-    const serialized = JSON.stringify(cleaned);
-    if (serialized.length > 850000) {
-      const fallback = { ...cleaned };
-      if (typeof fallback.imageUrl === 'string' && fallback.imageUrl.startsWith('data:')) {
-        delete fallback.imageUrl;
-      }
-      if (typeof fallback.photoUrl === 'string' && fallback.photoUrl.startsWith('data:')) {
-        delete fallback.photoUrl;
-      }
-      if (typeof fallback.authorPhotoUrl === 'string' && fallback.authorPhotoUrl.startsWith('data:')) {
-        delete fallback.authorPhotoUrl;
-      }
-      return fallback;
+function compressDataUrlForFirestore(dataUrl: string, maxDimension = 900, quality = 0.72): Promise<string> {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined' || !dataUrl.startsWith('data:image/')) {
+      resolve(dataUrl);
+      return;
     }
-  } catch {
-    // ignore
-  }
-  return cleaned;
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const scale = Math.min(1, maxDimension / Math.max(img.width || 1, img.height || 1));
+        const width = Math.max(1, Math.round(img.width * scale));
+        const height = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(dataUrl);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        const compressed = canvas.toDataURL('image/jpeg', quality);
+        resolve(compressed.length < dataUrl.length ? compressed : dataUrl);
+      } catch {
+        resolve(dataUrl);
+      }
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
 }
 
-function safeSetDoc(collectionName: string, docId: string, data: Record<string, any>) {
-  try {
-    const cleanedData = prepareFirestorePayload(data);
-    setDoc(doc(db, collectionName, docId), cleanedData).catch((err) => {
-      console.warn(`Firestore ${collectionName}/${docId} sync warning:`, err);
-    });
-  } catch (err) {
-    console.warn(`Firestore ${collectionName}/${docId} sync error:`, err);
+async function prepareFirestorePayload(
+  collectionName: string,
+  data: Record<string, any>
+): Promise<Record<string, any>> {
+  const cleaned: Record<string, any> = stripUndefined(data);
+
+  // Enforce required fields & maxLength constraints matching firestore.rules
+  if (collectionName === 'articles') {
+    if (typeof cleaned.title === 'string' && cleaned.title.length > 1000) {
+      cleaned.title = cleaned.title.slice(0, 1000);
+    }
+    if (!cleaned.category) cleaned.category = 'News';
+  } else if (collectionName === 'announcements') {
+    if (typeof cleaned.title === 'string' && cleaned.title.length > 1000) {
+      cleaned.title = cleaned.title.slice(0, 1000);
+    }
+    if (typeof cleaned.content === 'string' && cleaned.content.length > 20000) {
+      cleaned.content = cleaned.content.slice(0, 20000);
+    }
+    if (!cleaned.date) {
+      cleaned.date = new Date().toLocaleDateString('en-US', {
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric',
+      });
+    }
+    if (!cleaned.type) cleaned.type = 'General';
+  } else if (collectionName === 'categories') {
+    if (typeof cleaned.name === 'string' && cleaned.name.length > 256) {
+      cleaned.name = cleaned.name.slice(0, 256);
+    }
+    if (!cleaned.slug && cleaned.name) {
+      cleaned.slug = String(cleaned.name)
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '') || 'category';
+    }
+    if (!cleaned.color) cleaned.color = '#FB923C';
+  } else if (collectionName === 'editorialStaff') {
+    if (typeof cleaned.name === 'string' && cleaned.name.length > 500) {
+      cleaned.name = cleaned.name.slice(0, 500);
+    }
+    if (!cleaned.role) cleaned.role = 'Staff Writer';
+  } else if (collectionName === 'authorProfiles') {
+    if (typeof cleaned.name === 'string' && cleaned.name.length > 500) {
+      cleaned.name = cleaned.name.slice(0, 500);
+    }
+    if (typeof cleaned.bio === 'string' && cleaned.bio.length > 10000) {
+      cleaned.bio = cleaned.bio.slice(0, 10000);
+    }
+    if (!cleaned.bio) {
+      cleaned.bio = 'Student journalist at Barobo National High School writing for The Inkspirer.';
+    }
+    if (!cleaned.role) cleaned.role = 'Student Journalist';
   }
+
+  // Ensure embedded data URI images fit safely within Firestore's 1 MiB document limit
+  try {
+    let serialized = JSON.stringify(cleaned);
+    if (serialized.length > 750000) {
+      const imageFields = ['imageUrl', 'photoUrl', 'authorPhotoUrl'] as const;
+      for (const field of imageFields) {
+        if (typeof cleaned[field] === 'string' && cleaned[field].startsWith('data:image/')) {
+          cleaned[field] = await compressDataUrlForFirestore(cleaned[field], 800, 0.65);
+        }
+      }
+      serialized = JSON.stringify(cleaned);
+      if (serialized.length > 880000) {
+        for (const field of imageFields) {
+          if (typeof cleaned[field] === 'string' && cleaned[field].startsWith('data:image/')) {
+            cleaned[field] = await compressDataUrlForFirestore(cleaned[field], 560, 0.55);
+          }
+        }
+      }
+    }
+  } catch {
+    // ignore serialization check failure
+  }
+
+  return cleaned;
 }
 
 function mergeAndOrderCategories(loaded: PublicationCategory[]): PublicationCategory[] {
@@ -285,44 +383,203 @@ export function useInkspirerStore() {
     }
   });
 
-  const deletedIdsRef = useRef<Set<string>>(new Set());
+  const [activeAdviserConfig, setActiveAdviserConfig] = useState<PortalAdviserConfig>(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEYS.ACTIVE_ADVISER);
+      if (stored) return JSON.parse(stored);
+    } catch {
+      // ignore
+    }
+    return DEFAULT_ACTIVE_ADVISER;
+  });
 
-  // Real-time Firestore sync & Auto-seeding
+  const [handoverHistory, setHandoverHistory] = useState<AdviserHandoverRecord[]>(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEYS.HANDOVER_LOG);
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [autoSyncEnabled, setAutoSyncEnabledState] = useState<boolean>(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEYS.AUTO_SYNC);
+      if (stored === null) return true;
+      return JSON.parse(stored) !== false;
+    } catch {
+      return true;
+    }
+  });
+
+  const [syncStatus, setSyncStatus] = useState<CloudSyncStatus>('synced');
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+
+  const autoSyncEnabledRef = useRef<boolean>(autoSyncEnabled);
+  autoSyncEnabledRef.current = autoSyncEnabled;
+
+  const deletedIdsRef = useRef<Set<string>>(new Set());
+  const pendingLocalWritesRef = useRef<Set<string>>(new Set());
+  const inFlightWritesCountRef = useRef<number>(0);
+
+  const setAutoSyncEnabled = useCallback((enabled: boolean) => {
+    setAutoSyncEnabledState(enabled);
+    autoSyncEnabledRef.current = enabled;
+    safeLocalStorageSet(STORAGE_KEYS.AUTO_SYNC, enabled);
+  }, []);
+
+  const markWriteStart = useCallback(() => {
+    inFlightWritesCountRef.current += 1;
+    setSyncStatus('syncing');
+  }, []);
+
+  const markWriteEnd = useCallback((hadError = false) => {
+    inFlightWritesCountRef.current = Math.max(0, inFlightWritesCountRef.current - 1);
+    if (hadError) {
+      setSyncStatus('error');
+    } else if (inFlightWritesCountRef.current === 0) {
+      setSyncStatus('synced');
+      setLastSyncedAt(
+        new Date().toLocaleTimeString('en-US', {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        })
+      );
+    }
+  }, []);
+
+  const safeSetDoc = useCallback(
+    async (
+      collectionName: string,
+      docId: string,
+      data: Record<string, any>,
+      forceSync = false
+    ): Promise<boolean> => {
+      if (!forceSync && !autoSyncEnabledRef.current) {
+        return false;
+      }
+      const key = `${collectionName}/${docId}`;
+      pendingLocalWritesRef.current.add(key);
+      markWriteStart();
+      try {
+        const cleanedData = await prepareFirestorePayload(collectionName, data);
+        await setDoc(doc(db, collectionName, docId), cleanedData);
+        if (collectionName !== 'publicationSettings' || docId !== 'syncMeta') {
+          setDoc(
+            doc(db, 'publicationSettings', 'syncMeta'),
+            {
+              initialized: true,
+              lastSyncedAt: new Date().toISOString(),
+              updatedAtMs: Date.now(),
+            },
+            { merge: true }
+          ).catch(() => {});
+        }
+        markWriteEnd(false);
+        return true;
+      } catch (err) {
+        const info = buildFirestoreErrorInfo(err, OperationType.WRITE, key);
+        console.error('Firestore Auto-Sync Write Error:', JSON.stringify(info));
+        markWriteEnd(true);
+        return false;
+      } finally {
+        setTimeout(() => {
+          pendingLocalWritesRef.current.delete(key);
+        }, 2500);
+      }
+    },
+    [markWriteStart, markWriteEnd]
+  );
+
+  const safeDeleteDoc = useCallback(
+    async (collectionName: string, docId: string, forceSync = false): Promise<boolean> => {
+      if (!forceSync && !autoSyncEnabledRef.current) {
+        return false;
+      }
+      const key = `${collectionName}/${docId}`;
+      markWriteStart();
+      try {
+        await deleteDoc(doc(db, collectionName, docId));
+        setDoc(
+          doc(db, 'publicationSettings', 'syncMeta'),
+          {
+            initialized: true,
+            lastSyncedAt: new Date().toISOString(),
+            updatedAtMs: Date.now(),
+          },
+          { merge: true }
+        ).catch(() => {});
+        markWriteEnd(false);
+        return true;
+      } catch (err) {
+        const info = buildFirestoreErrorInfo(err, OperationType.DELETE, key);
+        console.error('Firestore Auto-Sync Delete Error:', JSON.stringify(info));
+        markWriteEnd(true);
+        return false;
+      }
+    },
+    [markWriteStart, markWriteEnd]
+  );
+
+  // Real-time Firestore Auto-Sync Listeners (Preview <-> Published Live single source of truth)
   useEffect(() => {
+    let isMounted = true;
+    let isCloudInitialized = false;
+
+    const checkInitialized = async (): Promise<boolean> => {
+      if (isCloudInitialized) return true;
+      try {
+        const metaSnap = await getDoc(doc(db, 'publicationSettings', 'syncMeta'));
+        if (metaSnap.exists() && metaSnap.data()?.initialized) {
+          isCloudInitialized = true;
+          return true;
+        }
+      } catch {
+        // ignore
+      }
+      return false;
+    };
+
     // 1. Articles Firestore listener
     const unsubArticles = onSnapshot(
       collection(db, 'articles'),
-      (snap) => {
+      async (snap) => {
+        if (!isMounted) return;
         if (!snap.empty) {
+          isCloudInitialized = true;
           const cloudArts = snap.docs.map((d) => d.data() as Article);
           setArticles((prev) => {
             const cloudIds = new Set(cloudArts.map((a) => a.id));
-            // Preserve local imageUrl if cloud copy stripped a large data URI
-            const mergedFromCloud = cloudArts
-              .filter((a) => !deletedIdsRef.current.has(a.id))
-              .map((cloudArt) => {
-                const localMatch = prev.find((p) => p.id === cloudArt.id);
-                if (!cloudArt.imageUrl && localMatch?.imageUrl) {
-                  return { ...cloudArt, imageUrl: localMatch.imageUrl };
-                }
-                return cloudArt;
-              });
-            // Keep any locally published articles not yet in Firestore and sync them up
-            const localOnly = prev.filter(
-              (p) => !cloudIds.has(p.id) && !deletedIdsRef.current.has(p.id)
+            const mergedFromCloud = cloudArts.filter((a) => !deletedIdsRef.current.has(a.id));
+            // Only keep local items actively pending write confirmation in THIS session
+            const pendingOnly = prev.filter(
+              (p) =>
+                !cloudIds.has(p.id) &&
+                !deletedIdsRef.current.has(p.id) &&
+                pendingLocalWritesRef.current.has(`articles/${p.id}`)
             );
-            localOnly.forEach((locArt) => {
-              safeSetDoc('articles', locArt.id, locArt);
-            });
-            const sorted = sortArticlesNewestFirst([...localOnly, ...mergedFromCloud]);
+            const sorted = sortArticlesNewestFirst([...pendingOnly, ...mergedFromCloud]);
             safeLocalStorageSet(STORAGE_KEYS.ARTICLES, sorted);
             return sorted;
           });
+          setLastSyncedAt(
+            new Date().toLocaleTimeString('en-US', {
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit',
+            })
+          );
         } else {
-          // Seed initial articles
-          INITIAL_ARTICLES.forEach((art) => {
-            safeSetDoc('articles', art.id, art);
-          });
+          const alreadyInit = await checkInitialized();
+          if (!alreadyInit) {
+            INITIAL_ARTICLES.forEach((art) => {
+              safeSetDoc('articles', art.id, art, true);
+            });
+          } else {
+            setArticles([]);
+            safeLocalStorageSet(STORAGE_KEYS.ARTICLES, []);
+          }
         }
       },
       (err) => {
@@ -333,28 +590,36 @@ export function useInkspirerStore() {
     // 2. Announcements Firestore listener
     const unsubAnnouncements = onSnapshot(
       collection(db, 'announcements'),
-      (snap) => {
+      async (snap) => {
+        if (!isMounted) return;
         if (!snap.empty) {
+          isCloudInitialized = true;
           const cloudAnn = snap.docs.map((d) => d.data() as Announcement);
           setAnnouncements((prev) => {
             const cloudIds = new Set(cloudAnn.map((a) => a.id));
-            const localOnly = prev.filter(
-              (p) => !cloudIds.has(p.id) && !deletedIdsRef.current.has(p.id)
+            const pendingOnly = prev.filter(
+              (p) =>
+                !cloudIds.has(p.id) &&
+                !deletedIdsRef.current.has(p.id) &&
+                pendingLocalWritesRef.current.has(`announcements/${p.id}`)
             );
-            localOnly.forEach((locAnn) => {
-              safeSetDoc('announcements', locAnn.id, locAnn);
-            });
             const merged = [
-              ...localOnly,
+              ...pendingOnly,
               ...cloudAnn.filter((a) => !deletedIdsRef.current.has(a.id)),
             ];
             safeLocalStorageSet(STORAGE_KEYS.ANNOUNCEMENTS, merged);
             return merged;
           });
         } else {
-          INITIAL_ANNOUNCEMENTS.forEach((ann) => {
-            safeSetDoc('announcements', ann.id, ann);
-          });
+          const alreadyInit = await checkInitialized();
+          if (!alreadyInit) {
+            INITIAL_ANNOUNCEMENTS.forEach((ann) => {
+              safeSetDoc('announcements', ann.id, ann, true);
+            });
+          } else {
+            setAnnouncements([]);
+            safeLocalStorageSet(STORAGE_KEYS.ANNOUNCEMENTS, []);
+          }
         }
       },
       (err) => {
@@ -366,10 +631,11 @@ export function useInkspirerStore() {
     const unsubCategories = onSnapshot(
       collection(db, 'categories'),
       (snap) => {
+        if (!isMounted) return;
         if (!snap.empty) {
+          isCloudInitialized = true;
           const cloudCats = snap.docs.map((d) => d.data() as PublicationCategory);
           const mergedCats = mergeAndOrderCategories(cloudCats);
-          // Ensure any missing default publication menus are seeded to Firestore
           INITIAL_CATEGORIES.forEach((initCat) => {
             const existsInCloud = cloudCats.some(
               (c) =>
@@ -378,14 +644,14 @@ export function useInkspirerStore() {
                 (initCat.name === 'Announcements' && c.name.toLowerCase() === 'announcement')
             );
             if (!existsInCloud) {
-              safeSetDoc('categories', initCat.id, initCat);
+              safeSetDoc('categories', initCat.id, initCat, true);
             }
           });
           setCategories(mergedCats);
           safeLocalStorageSet(STORAGE_KEYS.CATEGORIES, mergedCats);
         } else {
           INITIAL_CATEGORIES.forEach((cat) => {
-            safeSetDoc('categories', cat.id, cat);
+            safeSetDoc('categories', cat.id, cat, true);
           });
         }
       },
@@ -397,25 +663,36 @@ export function useInkspirerStore() {
     // 4. Submissions Firestore listener
     const unsubSubmissions = onSnapshot(
       collection(db, 'submissions'),
-      (snap) => {
+      async (snap) => {
+        if (!isMounted) return;
         if (!snap.empty) {
+          isCloudInitialized = true;
           const cloudSubs = snap.docs.map((d) => d.data() as StorySubmission);
           setSubmissions((prev) => {
             const cloudIds = new Set(cloudSubs.map((s) => s.id));
-            const localOnly = prev.filter(
-              (p) => !cloudIds.has(p.id) && !deletedIdsRef.current.has(p.id)
+            const pendingOnly = prev.filter(
+              (p) =>
+                !cloudIds.has(p.id) &&
+                !deletedIdsRef.current.has(p.id) &&
+                pendingLocalWritesRef.current.has(`submissions/${p.id}`)
             );
-            localOnly.forEach((locSub) => {
-              safeSetDoc('submissions', locSub.id, locSub);
-            });
-            const merged = [...localOnly, ...cloudSubs];
+            const merged = [
+              ...pendingOnly,
+              ...cloudSubs.filter((s) => !deletedIdsRef.current.has(s.id)),
+            ];
             safeLocalStorageSet(STORAGE_KEYS.SUBMISSIONS, merged);
             return merged;
           });
         } else {
-          INITIAL_SUBMISSIONS.forEach((sub) => {
-            safeSetDoc('submissions', sub.id, sub);
-          });
+          const alreadyInit = await checkInitialized();
+          if (!alreadyInit) {
+            INITIAL_SUBMISSIONS.forEach((sub) => {
+              safeSetDoc('submissions', sub.id, sub, true);
+            });
+          } else {
+            setSubmissions([]);
+            safeLocalStorageSet(STORAGE_KEYS.SUBMISSIONS, []);
+          }
         }
       },
       (err) => {
@@ -426,28 +703,36 @@ export function useInkspirerStore() {
     // 5. Staff Firestore listener
     const unsubStaff = onSnapshot(
       collection(db, 'editorialStaff'),
-      (snap) => {
+      async (snap) => {
+        if (!isMounted) return;
         if (!snap.empty) {
+          isCloudInitialized = true;
           const cloudStaff = snap.docs.map((d) => d.data() as EditorialMember);
           setStaff((prev) => {
             const cloudIds = new Set(cloudStaff.map((m) => m.id));
-            const localOnly = prev.filter(
-              (p) => !cloudIds.has(p.id) && !deletedIdsRef.current.has(p.id)
+            const pendingOnly = prev.filter(
+              (p) =>
+                !cloudIds.has(p.id) &&
+                !deletedIdsRef.current.has(p.id) &&
+                pendingLocalWritesRef.current.has(`editorialStaff/${p.id}`)
             );
-            localOnly.forEach((locMem) => {
-              safeSetDoc('editorialStaff', locMem.id, locMem);
-            });
             const merged = [
               ...cloudStaff.filter((m) => !deletedIdsRef.current.has(m.id)),
-              ...localOnly,
+              ...pendingOnly,
             ];
             safeLocalStorageSet(STORAGE_KEYS.STAFF, merged);
             return merged;
           });
         } else {
-          INITIAL_EDITORIAL_STAFF.forEach((member) => {
-            safeSetDoc('editorialStaff', member.id, member);
-          });
+          const alreadyInit = await checkInitialized();
+          if (!alreadyInit) {
+            INITIAL_EDITORIAL_STAFF.forEach((member) => {
+              safeSetDoc('editorialStaff', member.id, member, true);
+            });
+          } else {
+            setStaff([]);
+            safeLocalStorageSet(STORAGE_KEYS.STAFF, []);
+          }
         }
       },
       (err) => {
@@ -458,28 +743,36 @@ export function useInkspirerStore() {
     // 6. Student Journalist Author Bio Profiles Firestore listener
     const unsubAuthorProfiles = onSnapshot(
       collection(db, 'authorProfiles'),
-      (snap) => {
+      async (snap) => {
+        if (!isMounted) return;
         if (!snap.empty) {
+          isCloudInitialized = true;
           const cloudProfiles = snap.docs.map((d) => d.data() as StudentAuthorProfile);
           setAuthorProfiles((prev) => {
             const cloudIds = new Set(cloudProfiles.map((p) => p.id));
-            const localOnly = prev.filter(
-              (p) => !cloudIds.has(p.id) && !deletedIdsRef.current.has(p.id)
+            const pendingOnly = prev.filter(
+              (p) =>
+                !cloudIds.has(p.id) &&
+                !deletedIdsRef.current.has(p.id) &&
+                pendingLocalWritesRef.current.has(`authorProfiles/${p.id}`)
             );
-            localOnly.forEach((locProf) => {
-              safeSetDoc('authorProfiles', locProf.id, locProf);
-            });
             const merged = [
-              ...localOnly,
+              ...pendingOnly,
               ...cloudProfiles.filter((p) => !deletedIdsRef.current.has(p.id)),
             ];
             safeLocalStorageSet(STORAGE_KEYS.AUTHOR_PROFILES, merged);
             return merged;
           });
         } else {
-          INITIAL_AUTHOR_PROFILES.forEach((prof) => {
-            safeSetDoc('authorProfiles', prof.id, prof);
-          });
+          const alreadyInit = await checkInitialized();
+          if (!alreadyInit) {
+            INITIAL_AUTHOR_PROFILES.forEach((prof) => {
+              safeSetDoc('authorProfiles', prof.id, prof, true);
+            });
+          } else {
+            setAuthorProfiles([]);
+            safeLocalStorageSet(STORAGE_KEYS.AUTHOR_PROFILES, []);
+          }
         }
       },
       (err) => {
@@ -487,10 +780,11 @@ export function useInkspirerStore() {
       }
     );
 
-    // 7. Publication Edition Config (Volume, Issue No., Academic Year, Circulation & ISSN) Firestore listener
+    // 7. Publication Edition Config Firestore listener
     const unsubEdition = onSnapshot(
       doc(db, 'publicationSettings', 'edition'),
       (snap) => {
+        if (!isMounted) return;
         if (snap.exists()) {
           const data = snap.data() as Partial<PublicationEditionConfig>;
           if (
@@ -519,7 +813,7 @@ export function useInkspirerStore() {
             });
           }
         } else {
-          safeSetDoc('publicationSettings', 'edition', DEFAULT_EDITION_CONFIG);
+          safeSetDoc('publicationSettings', 'edition', DEFAULT_EDITION_CONFIG, true);
         }
       },
       (err) => {
@@ -527,7 +821,73 @@ export function useInkspirerStore() {
       }
     );
 
+    // 8. Active Portal Adviser Config Firestore listener (so Preview adviser photo/edits appear on Live)
+    const unsubActiveAdviser = onSnapshot(
+      doc(db, 'publicationSettings', 'activeAdviser'),
+      (snap) => {
+        if (!isMounted) return;
+        if (snap.exists()) {
+          const cloudAdviser = snap.data() as PortalAdviserConfig;
+          if (cloudAdviser && cloudAdviser.name) {
+            setActiveAdviserConfig(cloudAdviser);
+            safeLocalStorageSet(STORAGE_KEYS.ACTIVE_ADVISER, cloudAdviser);
+          }
+        } else {
+          // Migrate any locally stored adviser config from Preview up to Cloud Firestore
+          let seedAdviser = DEFAULT_ACTIVE_ADVISER;
+          try {
+            const localStored = localStorage.getItem(STORAGE_KEYS.ACTIVE_ADVISER);
+            if (localStored) {
+              const parsed = JSON.parse(localStored) as PortalAdviserConfig;
+              if (parsed && parsed.name) {
+                seedAdviser = parsed;
+              }
+            }
+          } catch {
+            // ignore
+          }
+          safeSetDoc('publicationSettings', 'activeAdviser', seedAdviser, true);
+        }
+      },
+      (err) => {
+        console.warn('Firestore activeAdviser listener info:', err.message);
+      }
+    );
+
+    // 9. Adviser Handover Log Firestore listener
+    const unsubHandoverLog = onSnapshot(
+      doc(db, 'publicationSettings', 'adviserHandoverLog'),
+      (snap) => {
+        if (!isMounted) return;
+        if (snap.exists()) {
+          const data = snap.data() as { records?: AdviserHandoverRecord[] };
+          if (Array.isArray(data?.records)) {
+            setHandoverHistory(data.records);
+            safeLocalStorageSet(STORAGE_KEYS.HANDOVER_LOG, data.records);
+          }
+        } else {
+          let seedRecords: AdviserHandoverRecord[] = [];
+          try {
+            const localStored = localStorage.getItem(STORAGE_KEYS.HANDOVER_LOG);
+            if (localStored) {
+              const parsed = JSON.parse(localStored);
+              if (Array.isArray(parsed)) seedRecords = parsed;
+            }
+          } catch {
+            // ignore
+          }
+          if (seedRecords.length > 0) {
+            safeSetDoc('publicationSettings', 'adviserHandoverLog', { records: seedRecords }, true);
+          }
+        }
+      },
+      (err) => {
+        console.warn('Firestore adviserHandoverLog listener info:', err.message);
+      }
+    );
+
     return () => {
+      isMounted = false;
       unsubArticles();
       unsubAnnouncements();
       unsubCategories();
@@ -535,10 +895,12 @@ export function useInkspirerStore() {
       unsubStaff();
       unsubAuthorProfiles();
       unsubEdition();
+      unsubActiveAdviser();
+      unsubHandoverLog();
     };
-  }, []);
+  }, [safeSetDoc]);
 
-  // Save local preferences
+  // Save local reader preferences
   useEffect(() => {
     safeLocalStorageSet(STORAGE_KEYS.BOOKMARKS, bookmarks);
   }, [bookmarks]);
@@ -698,7 +1060,9 @@ export function useInkspirerStore() {
       category: sub.category,
       author: sub.studentName,
       authorRole: `${sub.gradeSection} (Student Contributor)`,
-      authorBio: sub.notesToEditor || `Student journalist from ${sub.gradeSection} writing for The Inkspirer at Barobo National High School.`,
+      authorBio:
+        sub.notesToEditor ||
+        `Student journalist from ${sub.gradeSection} writing for The Inkspirer at Barobo National High School.`,
       authorAvatar: 'student-contributor',
       date: new Date().toLocaleDateString('en-US', {
         month: 'long',
@@ -713,7 +1077,7 @@ export function useInkspirerStore() {
       categoryTheme,
       views: 1,
       likes: 0,
-      issue: 'Vol. XXIV · Issue 1',
+      issue: editionConfig.volumeIssue || 'Vol. XXIV · Issue No. 1',
     });
 
     setArticles((prev) => {
@@ -792,7 +1156,7 @@ export function useInkspirerStore() {
       safeLocalStorageSet(STORAGE_KEYS.ARTICLES, remaining);
       return remaining;
     });
-    deleteDoc(doc(db, 'articles', id)).catch(() => {});
+    safeDeleteDoc('articles', id);
   };
 
   // Announcements management
@@ -802,6 +1166,13 @@ export function useInkspirerStore() {
       id: `ann-${Date.now()}`,
       title: ann.title.trim(),
       content: ann.content.trim(),
+      date:
+        ann.date ||
+        new Date().toLocaleDateString('en-US', {
+          month: 'long',
+          day: 'numeric',
+          year: 'numeric',
+        }),
       ...(ann.deadline?.trim() ? { deadline: ann.deadline.trim() } : { deadline: undefined }),
       ...(ann.location?.trim() ? { location: ann.location.trim() } : { location: undefined }),
     });
@@ -850,7 +1221,7 @@ export function useInkspirerStore() {
       safeLocalStorageSet(STORAGE_KEYS.ANNOUNCEMENTS, remaining);
       return remaining;
     });
-    deleteDoc(doc(db, 'announcements', id)).catch(() => {});
+    safeDeleteDoc('announcements', id);
   };
 
   const togglePinAnnouncement = (id: string) => {
@@ -870,7 +1241,11 @@ export function useInkspirerStore() {
 
   // Category Management CRUD
   const addCategory = (cat: Omit<PublicationCategory, 'id' | 'slug'>): PublicationCategory => {
-    const slug = cat.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `cat-${Date.now()}`;
+    const slug =
+      cat.name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '') || `cat-${Date.now()}`;
     const newCategory: PublicationCategory = stripUndefined({
       ...cat,
       id: `cat-${Date.now()}`,
@@ -905,7 +1280,6 @@ export function useInkspirerStore() {
     });
     safeSetDoc('categories', id, merged);
 
-    // If category name or colors changed, update existing articles in state and Firestore
     if (oldName !== newName || updated.color || updated.badgeBg || updated.badgeText) {
       setArticles((prev) => {
         const nextArts = prev.map((art) => {
@@ -928,7 +1302,6 @@ export function useInkspirerStore() {
         return nextArts;
       });
 
-      // Also cascade to submissions
       setSubmissions((prev) => {
         const nextSubs = prev.map((sub) => {
           if (sub.category.toLowerCase() === oldName.toLowerCase()) {
@@ -953,9 +1326,8 @@ export function useInkspirerStore() {
 
     setCategories(remaining);
     safeLocalStorageSet(STORAGE_KEYS.CATEGORIES, remaining);
-    deleteDoc(doc(db, 'categories', id)).catch(() => {});
+    safeDeleteDoc('categories', id);
 
-    // Reassign articles under deleted category to replacement
     setArticles((prev) => {
       const nextArts = prev.map((art) => {
         if (art.category.toLowerCase() === target.name.toLowerCase()) {
@@ -976,7 +1348,6 @@ export function useInkspirerStore() {
       return nextArts;
     });
 
-    // Reassign submissions
     setSubmissions((prev) => {
       const nextSubs = prev.map((sub) => {
         if (sub.category.toLowerCase() === target.name.toLowerCase()) {
@@ -1051,9 +1422,7 @@ export function useInkspirerStore() {
       safeLocalStorageSet(STORAGE_KEYS.STAFF, remaining);
       return remaining;
     });
-    deleteDoc(doc(db, 'editorialStaff', id)).catch((err) => {
-      console.warn('Firestore deleteStaffMember sync warning:', err);
-    });
+    safeDeleteDoc('editorialStaff', id);
   };
 
   // Student Journalist Author Bio Profile CRUD & Article Synchronization
@@ -1094,7 +1463,6 @@ export function useInkspirerStore() {
 
     safeSetDoc('authorProfiles', newProfile.id, newProfile);
 
-    // Sync matching articles by author name
     setArticles((prev) => {
       const synced = prev.map((art) => {
         if (art.author.trim().toLowerCase() === cleanName.toLowerCase()) {
@@ -1165,7 +1533,6 @@ export function useInkspirerStore() {
       return updatedList;
     });
 
-    // Cascade bio and role updates to all articles authored by this student journalist
     setArticles((prev) => {
       const synced = prev.map((art) => {
         const matchesId = art.authorProfileId === id;
@@ -1222,9 +1589,7 @@ export function useInkspirerStore() {
       safeLocalStorageSet(STORAGE_KEYS.AUTHOR_PROFILES, remaining);
       return remaining;
     });
-    deleteDoc(doc(db, 'authorProfiles', id)).catch((err) => {
-      console.warn('Firestore deleteAuthorProfile sync warning:', err);
-    });
+    safeDeleteDoc('authorProfiles', id);
   };
 
   const updateEditionConfig = (
@@ -1276,8 +1641,73 @@ export function useInkspirerStore() {
     });
   };
 
+  // Cloud-synced Portal Adviser Config & Handover Log
+  const updateActiveAdviserConfig = useCallback(
+    (nextConfig: PortalAdviserConfig) => {
+      const cleaned = stripUndefined(nextConfig);
+      setActiveAdviserConfig(cleaned);
+      safeLocalStorageSet(STORAGE_KEYS.ACTIVE_ADVISER, cleaned);
+      safeSetDoc('publicationSettings', 'activeAdviser', cleaned);
+    },
+    [safeSetDoc]
+  );
+
+  const addHandoverRecord = useCallback(
+    (record: AdviserHandoverRecord) => {
+      setHandoverHistory((prev) => {
+        const updatedHistory = [stripUndefined(record), ...prev];
+        safeLocalStorageSet(STORAGE_KEYS.HANDOVER_LOG, updatedHistory);
+        safeSetDoc('publicationSettings', 'adviserHandoverLog', { records: updatedHistory });
+        return updatedHistory;
+      });
+    },
+    [safeSetDoc]
+  );
+
+  // Full Preview -> Published Live Cloud Sync Flush
+  const syncAllToCloud = useCallback(async () => {
+    const tasks: Promise<boolean>[] = [];
+    articles.forEach((art) => tasks.push(safeSetDoc('articles', art.id, art, true)));
+    announcements.forEach((ann) => tasks.push(safeSetDoc('announcements', ann.id, ann, true)));
+    categories.forEach((cat) => tasks.push(safeSetDoc('categories', cat.id, cat, true)));
+    submissions.forEach((sub) => tasks.push(safeSetDoc('submissions', sub.id, sub, true)));
+    staff.forEach((member) => tasks.push(safeSetDoc('editorialStaff', member.id, member, true)));
+    authorProfiles.forEach((prof) => tasks.push(safeSetDoc('authorProfiles', prof.id, prof, true)));
+    tasks.push(safeSetDoc('publicationSettings', 'edition', editionConfig, true));
+    tasks.push(safeSetDoc('publicationSettings', 'activeAdviser', activeAdviserConfig, true));
+    tasks.push(
+      safeSetDoc('publicationSettings', 'adviserHandoverLog', { records: handoverHistory }, true)
+    );
+    tasks.push(
+      safeSetDoc(
+        'publicationSettings',
+        'syncMeta',
+        {
+          initialized: true,
+          lastSyncedAt: new Date().toISOString(),
+          updatedAtMs: Date.now(),
+        },
+        true
+      )
+    );
+    const results = await Promise.all(tasks);
+    return results.every(Boolean);
+  }, [
+    articles,
+    announcements,
+    categories,
+    submissions,
+    staff,
+    authorProfiles,
+    editionConfig,
+    activeAdviserConfig,
+    handoverHistory,
+    safeSetDoc,
+  ]);
+
   // Reset to factory demo data in state & Firestore
   const resetToDefaults = () => {
+    deletedIdsRef.current.clear();
     setArticles(INITIAL_ARTICLES);
     setAnnouncements(INITIAL_ANNOUNCEMENTS);
     setSubmissions(INITIAL_SUBMISSIONS);
@@ -1285,6 +1715,8 @@ export function useInkspirerStore() {
     setCategories(INITIAL_CATEGORIES);
     setAuthorProfiles(INITIAL_AUTHOR_PROFILES);
     setEditionConfig(DEFAULT_EDITION_CONFIG);
+    setActiveAdviserConfig(DEFAULT_ACTIVE_ADVISER);
+    setHandoverHistory([]);
     setBookmarks([]);
     setLikedArticles([]);
     setReadingProgressMap({});
@@ -1295,24 +1727,26 @@ export function useInkspirerStore() {
     }
 
     INITIAL_ARTICLES.forEach((art) => {
-      safeSetDoc('articles', art.id, art);
+      safeSetDoc('articles', art.id, art, true);
     });
     INITIAL_ANNOUNCEMENTS.forEach((ann) => {
-      safeSetDoc('announcements', ann.id, ann);
+      safeSetDoc('announcements', ann.id, ann, true);
     });
     INITIAL_CATEGORIES.forEach((cat) => {
-      safeSetDoc('categories', cat.id, cat);
+      safeSetDoc('categories', cat.id, cat, true);
     });
     INITIAL_SUBMISSIONS.forEach((sub) => {
-      safeSetDoc('submissions', sub.id, sub);
+      safeSetDoc('submissions', sub.id, sub, true);
     });
     INITIAL_EDITORIAL_STAFF.forEach((member) => {
-      safeSetDoc('editorialStaff', member.id, member);
+      safeSetDoc('editorialStaff', member.id, member, true);
     });
     INITIAL_AUTHOR_PROFILES.forEach((prof) => {
-      safeSetDoc('authorProfiles', prof.id, prof);
+      safeSetDoc('authorProfiles', prof.id, prof, true);
     });
-    safeSetDoc('publicationSettings', 'edition', DEFAULT_EDITION_CONFIG);
+    safeSetDoc('publicationSettings', 'edition', DEFAULT_EDITION_CONFIG, true);
+    safeSetDoc('publicationSettings', 'activeAdviser', DEFAULT_ACTIVE_ADVISER, true);
+    safeSetDoc('publicationSettings', 'adviserHandoverLog', { records: [] }, true);
   };
 
   return {
@@ -1323,6 +1757,13 @@ export function useInkspirerStore() {
     categories,
     authorProfiles,
     editionConfig,
+    activeAdviserConfig,
+    handoverHistory,
+    autoSyncEnabled,
+    setAutoSyncEnabled,
+    syncStatus,
+    lastSyncedAt,
+    syncAllToCloud,
     bookmarks,
     readingProgressMap,
     likedArticles,
@@ -1352,6 +1793,8 @@ export function useInkspirerStore() {
     updateAuthorProfile,
     deleteAuthorProfile,
     updateEditionConfig,
+    updateActiveAdviserConfig,
+    addHandoverRecord,
     resetToDefaults,
   };
 }

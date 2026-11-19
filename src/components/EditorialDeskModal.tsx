@@ -36,7 +36,17 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   LayoutGrid,
+  Cloud,
+  RefreshCw,
+  Film,
+  KeyRound,
 } from 'lucide-react';
+import {
+  EDITORIAL_ROLES,
+  EditorialRoleId,
+  getEditorialRoleConfig,
+} from '../utils/editorialRoles';
+import type { CloudSyncStatus } from '../hooks/useInkspirerStore';
 import {
   Article,
   Announcement,
@@ -54,6 +64,7 @@ import {
 } from '../types';
 import { downloadSubmissionTextFile } from '../utils/exporter';
 import { normalizeImageUrl, handleImageErrorWithDriveFallback } from '../utils/imageUrl';
+import { parseVideoUrl } from '../utils/videoUrl';
 import { useAuth } from '../context/AuthContext';
 import { AuthorBioManager } from './AuthorBioManager';
 import { InkspirerLogo } from './InkspirerLogo';
@@ -154,7 +165,17 @@ interface EditorialDeskModalProps {
   onDeleteAuthorProfile?: (id: string) => void;
   editionConfig?: PublicationEditionConfig;
   onUpdateEditionConfig?: (updated: Partial<PublicationEditionConfig>, syncLeadStoryIssue?: boolean) => void;
+  activeAdviserConfig?: PortalAdviserConfig;
+  onUpdateActiveAdviserConfig?: (config: PortalAdviserConfig) => void;
+  handoverHistory?: AdviserHandoverRecord[];
+  onAddHandoverRecord?: (record: AdviserHandoverRecord) => void;
+  autoSyncEnabled?: boolean;
+  onToggleAutoSync?: (enabled: boolean) => void;
+  syncStatus?: CloudSyncStatus;
+  lastSyncedAt?: string | null;
+  onSyncAllToCloud?: () => Promise<boolean>;
   onViewArticle?: (art: Article) => void;
+  onOpenAccountModal?: () => void;
   onResetDefaults: () => void;
 }
 
@@ -188,26 +209,46 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
   onDeleteAuthorProfile,
   editionConfig,
   onUpdateEditionConfig,
+  activeAdviserConfig: cloudAdviserConfig,
+  onUpdateActiveAdviserConfig,
+  handoverHistory: cloudHandoverHistory,
+  onAddHandoverRecord,
+  autoSyncEnabled = true,
+  onToggleAutoSync,
+  syncStatus = 'synced',
+  lastSyncedAt = null,
+  onSyncAllToCloud,
   onViewArticle,
+  onOpenAccountModal,
   onResetDefaults,
 }) => {
-  // Firebase Authentication & Role Management
+  // Firebase Authentication & 10-Role Editorial Access Control
   const {
     currentUser,
     userProfile,
+    activeRoleConfig,
     loginWithGoogle,
-    loginAsAdviserDemo,
+    loginWithEditorialRole,
+    hasCustomPassword,
     updateActiveAdviserSession,
-    loginAsEditorDemo,
     logout,
     isAuthorizedStaff,
     isAdviser,
   } = useAuth();
 
-  const [isPinUnlocked, setIsPinUnlocked] = useState(true);
+  const [isPinUnlocked, setIsPinUnlocked] = useState(false);
   const isAuthenticated = isAuthorizedStaff || isPinUnlocked || !!userProfile;
+  const [selectedGateRoleId, setSelectedGateRoleId] = useState<EditorialRoleId>('publication-adviser');
+  const [gateStaffName, setGateStaffName] = useState('');
+  const [gateIsSubmitting, setGateIsSubmitting] = useState(false);
   const [pinCode, setPinCode] = useState('');
   const [authError, setAuthError] = useState('');
+
+  useEffect(() => {
+    if (!userProfile && !currentUser) {
+      setIsPinUnlocked(false);
+    }
+  }, [userProfile, currentUser]);
 
   const compressUploadedImage = (file: File, onResult: (dataUrl: string) => void) => {
     const reader = new FileReader();
@@ -267,9 +308,27 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
 
   useEffect(() => {
     if (isOpen && initialTab) {
-      setActiveTab(initialTab);
+      if (!activeRoleConfig || activeRoleConfig.allowedTabs.includes(initialTab)) {
+        setActiveTab(initialTab);
+      } else {
+        setActiveTab(activeRoleConfig.defaultTab);
+      }
     }
-  }, [isOpen, initialTab]);
+  }, [isOpen, initialTab, activeRoleConfig]);
+
+  // Enforce strict role-scoped tab & beat boundaries whenever activeRoleConfig changes
+  useEffect(() => {
+    if (!activeRoleConfig) return;
+    if (!activeRoleConfig.allowedTabs.includes(activeTab)) {
+      setActiveTab(activeRoleConfig.defaultTab);
+    }
+    if (activeRoleConfig.beatScope) {
+      setComposerCategory(activeRoleConfig.beatScope as Category);
+      setArticleCategoryFilter(activeRoleConfig.beatScope);
+    } else {
+      setArticleCategoryFilter('All');
+    }
+  }, [activeRoleConfig]);
 
   useEffect(() => {
     try {
@@ -384,8 +443,9 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
   const [editStaffEmail, setEditStaffEmail] = useState('');
   const [editStaffPin, setEditStaffPin] = useState('1991');
 
-  // Portal Adviser Management & Resignation / Succession state
-  const [activeAdviserConfig, setActiveAdviserConfig] = useState<PortalAdviserConfig>(() => {
+  // Portal Adviser Management & Resignation / Succession state (Cloud Auto-Synced via Firestore)
+  const [localAdviserConfig, setLocalAdviserConfig] = useState<PortalAdviserConfig>(() => {
+    if (cloudAdviserConfig) return cloudAdviserConfig;
     try {
       const stored = localStorage.getItem('the_inkspirer_active_adviser_v1');
       if (stored) return JSON.parse(stored);
@@ -404,7 +464,22 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
     };
   });
 
-  const [handoverHistory, setHandoverHistory] = useState<AdviserHandoverRecord[]>(() => {
+  const activeAdviserConfig = cloudAdviserConfig || localAdviserConfig;
+  const setActiveAdviserConfig = (next: PortalAdviserConfig) => {
+    setLocalAdviserConfig(next);
+    if (onUpdateActiveAdviserConfig) {
+      onUpdateActiveAdviserConfig(next);
+    } else {
+      try {
+        localStorage.setItem('the_inkspirer_active_adviser_v1', JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+    }
+  };
+
+  const [localHandoverHistory, setLocalHandoverHistory] = useState<AdviserHandoverRecord[]>(() => {
+    if (cloudHandoverHistory) return cloudHandoverHistory;
     try {
       const stored = localStorage.getItem('the_inkspirer_adviser_handover_log_v1');
       return stored ? JSON.parse(stored) : [];
@@ -412,6 +487,21 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
       return [];
     }
   });
+
+  const handoverHistory = cloudHandoverHistory || localHandoverHistory;
+  const appendHandoverRecord = (record: AdviserHandoverRecord) => {
+    const updatedHistory = [record, ...handoverHistory];
+    setLocalHandoverHistory(updatedHistory);
+    if (onAddHandoverRecord) {
+      onAddHandoverRecord(record);
+    } else {
+      try {
+        localStorage.setItem('the_inkspirer_adviser_handover_log_v1', JSON.stringify(updatedHistory));
+      } catch {
+        // ignore
+      }
+    }
+  };
 
   // Sync active adviser name/details/photoUrl if edited in the staff roster
   useEffect(() => {
@@ -450,10 +540,14 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
         department: primaryInRoster.department,
         photoUrl: primaryInRoster.photoUrl || activeAdviserConfig.photoUrl,
       };
-      setActiveAdviserConfig(synced);
-      localStorage.setItem('the_inkspirer_active_adviser_v1', JSON.stringify(synced));
+      setLocalAdviserConfig(synced);
+      if (onUpdateActiveAdviserConfig) {
+        onUpdateActiveAdviserConfig(synced);
+      } else {
+        localStorage.setItem('the_inkspirer_active_adviser_v1', JSON.stringify(synced));
+      }
     }
-  }, [staff, activeAdviserConfig]);
+  }, [staff, activeAdviserConfig, onUpdateActiveAdviserConfig]);
 
   // Modals for Portal Adviser Resignation / Handover & Adding Portal Adviser
   const [isResignModalOpen, setIsResignModalOpen] = useState(false);
@@ -505,11 +599,13 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
   const [deskIssnAutoNotice, setDeskIssnAutoNotice] = useState(false);
   const [deskSyncLeadIssue, setDeskSyncLeadIssue] = useState(true);
 
-  // 1000x500 Category Slide Photo Upload Modal state (kept strictly above early return)
+  // 1000x500 Category Slide Photo / Video Upload Modal state (kept strictly above early return)
   const [isUploadSlideModalOpen, setIsUploadSlideModalOpen] = useState(false);
   const [slideModalCategory, setSlideModalCategory] = useState<string>('News');
   const [slideModalPostId, setSlideModalPostId] = useState<string>('');
+  const [slideModalMediaType, setSlideModalMediaType] = useState<'photo' | 'video'>('photo');
   const [slideModalImageUrl, setSlideModalImageUrl] = useState<string>('');
+  const [slideModalVideoUrl, setSlideModalVideoUrl] = useState<string>('');
 
   useEffect(() => {
     setDeskVolumeIssue(currentVolumeIssue);
@@ -530,7 +626,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
   if (!isOpen) return null;
 
   const handleOpenUploadSlideModal = () => {
-    const defaultCat = 'News';
+    const defaultCat = activeRoleConfig?.beatScope || 'News';
     const matchingPosts = articles.filter(
       (a) => a.category.toLowerCase() === defaultCat.toLowerCase()
     );
@@ -538,6 +634,8 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
     setSlideModalCategory(initialPost ? initialPost.category : defaultCat);
     setSlideModalPostId(initialPost ? initialPost.id : '');
     setSlideModalImageUrl(initialPost?.imageUrl || '');
+    setSlideModalVideoUrl(initialPost?.videoUrl || '');
+    setSlideModalMediaType(initialPost?.videoUrl ? 'video' : 'photo');
     setIsUploadSlideModalOpen(true);
   };
 
@@ -549,9 +647,13 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
     if (matchingPosts.length > 0) {
       setSlideModalPostId(matchingPosts[0].id);
       setSlideModalImageUrl(matchingPosts[0].imageUrl || '');
+      setSlideModalVideoUrl(matchingPosts[0].videoUrl || '');
+      setSlideModalMediaType(matchingPosts[0].videoUrl ? 'video' : 'photo');
     } else {
       setSlideModalPostId('');
       setSlideModalImageUrl('');
+      setSlideModalVideoUrl('');
+      setSlideModalMediaType('photo');
     }
   };
 
@@ -560,6 +662,8 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
     const found = articles.find((a) => a.id === postId);
     if (found) {
       setSlideModalImageUrl(found.imageUrl || '');
+      setSlideModalVideoUrl(found.videoUrl || '');
+      setSlideModalMediaType(found.videoUrl ? 'video' : 'photo');
     }
   };
 
@@ -598,18 +702,27 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
   const handleSaveSlidePhotoFromDesk = (e: React.FormEvent) => {
     e.preventDefault();
     if (!slideModalPostId) {
-      showToast('Please select a post to attach the slide photo to.');
+      showToast('Please select a post to attach the slide photo or video to.');
       return;
     }
     const targetPost = articles.find((a) => a.id === slideModalPostId);
     if (!targetPost) return;
-    const normalized = normalizeImageUrl(slideModalImageUrl);
+
+    const normalizedImage = normalizeImageUrl(slideModalImageUrl);
+    const trimmedVideo = slideModalVideoUrl.trim();
+    const finalVideoUrl = slideModalMediaType === 'video' ? trimmedVideo || undefined : undefined;
+
     onUpdateArticle({
       ...targetPost,
-      imageUrl: normalized || undefined,
+      imageUrl: normalizedImage || undefined,
+      videoUrl: finalVideoUrl,
     });
     setIsUploadSlideModalOpen(false);
-    showToast(`Updated 1000×500 slide photo for "${targetPost.title}"!`);
+    showToast(
+      finalVideoUrl
+        ? `Updated 1000×500 slide video for "${targetPost.title}"!`
+        : `Updated 1000×500 slide photo for "${targetPost.title}"!`
+    );
   };
 
   const handleDeskVolumeIssueChange = (newVolumeIssue: string) => {
@@ -873,9 +986,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
         'Resigned as Publication Adviser and transferred portal administration to successor.',
     };
 
-    const updatedHistory = [logRecord, ...handoverHistory];
-    setHandoverHistory(updatedHistory);
-    localStorage.setItem('the_inkspirer_adviser_handover_log_v1', JSON.stringify(updatedHistory));
+    appendHandoverRecord(logRecord);
 
     setIsResignModalOpen(false);
     showToast(
@@ -1278,28 +1389,31 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
     showToast(`Updated "${updated.title}" & synced author bio profile!`);
   };
 
-  const handleAuthSubmit = (e: React.FormEvent) => {
+  const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const validPin = activeAdviserConfig.pinCode || '1991';
-    if (
-      pinCode === validPin ||
-      pinCode === '1991' ||
-      pinCode.toLowerCase() === 'bnhs' ||
-      pinCode === 'admin' ||
-      pinCode === '1234'
-    ) {
-      setIsPinUnlocked(true);
-      loginAsAdviserDemo({
-        name: activeAdviserConfig.name,
-        email: activeAdviserConfig.email,
-        designation: `${activeAdviserConfig.role} · ${activeAdviserConfig.designation}`,
-        department: activeAdviserConfig.department,
-        photoUrl: activeAdviserConfig.photoUrl || null,
+    setAuthError('');
+    if (!pinCode.trim()) {
+      setAuthError('Please enter your account password.');
+      return;
+    }
+
+    setGateIsSubmitting(true);
+    try {
+      await loginWithEditorialRole(selectedGateRoleId, pinCode, {
+        staffName: gateStaffName.trim() || undefined,
+        activeAdviser: activeAdviserConfig,
       });
-      setAuthError('');
-      showToast(`Welcome, ${activeAdviserConfig.name} (${activeAdviserConfig.role})`);
-    } else {
-      setAuthError(`Incorrect PIN. (Tip: Try ${validPin} or click Quick Login below)`);
+      setIsPinUnlocked(true);
+      setPinCode('');
+      setGateStaffName('');
+      const cfg = getEditorialRoleConfig(selectedGateRoleId);
+      showToast(`Signed in to ${cfg?.title || 'Editorial'} workspace`);
+    } catch (err: unknown) {
+      setAuthError(
+        err instanceof Error ? err.message : 'Incorrect password for selected editorial role.'
+      );
+    } finally {
+      setGateIsSubmitting(false);
     }
   };
 
@@ -1473,9 +1587,27 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
     }
   };
 
-  const pendingCount = submissions.filter((s) => s.status === 'pending').length;
+  // Role-scoped submissions & articles (strict isolation per editorial beat / personal writer account)
+  const scopedSubmissions = activeRoleConfig?.beatScope
+    ? submissions.filter(
+        (s) => s.category.toLowerCase() === activeRoleConfig.beatScope!.toLowerCase()
+      )
+    : submissions;
 
-  const deskMenuItems: {
+  const scopedArticles = activeRoleConfig?.beatScope
+    ? articles.filter(
+        (a) => a.category.toLowerCase() === activeRoleConfig.beatScope!.toLowerCase()
+      )
+    : activeRoleConfig?.ownArticlesOnly && userProfile?.displayName
+    ? articles.filter(
+        (a) =>
+          a.author.trim().toLowerCase() === userProfile.displayName!.trim().toLowerCase()
+      )
+    : articles;
+
+  const pendingCount = scopedSubmissions.filter((s) => s.status === 'pending').length;
+
+  const allDeskMenuItems: {
     id: typeof activeTab;
     label: string;
     shortLabel: string;
@@ -1487,16 +1619,20 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
   }[] = [
     {
       id: 'submissions',
-      label: 'Submissions Queue',
+      label: activeRoleConfig?.beatScope
+        ? `${activeRoleConfig.beatScope} Submissions`
+        : 'Submissions Queue',
       shortLabel: 'Submissions',
       group: 'Editorial Workflow',
       icon: FileCheck,
-      badge: pendingCount > 0 ? pendingCount : submissions.length,
+      badge: pendingCount > 0 ? pendingCount : scopedSubmissions.length,
       urgentBadge: pendingCount > 0,
     },
     {
       id: 'compose',
-      label: 'Publish New Story',
+      label: activeRoleConfig?.beatScope
+        ? `Publish ${activeRoleConfig.beatScope} Story`
+        : 'Publish New Story',
       shortLabel: 'Publish Story',
       group: 'Editorial Workflow',
       icon: PlusCircle,
@@ -1504,11 +1640,15 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
     },
     {
       id: 'articles',
-      label: 'Live Articles',
-      shortLabel: 'Live Articles',
+      label: activeRoleConfig?.ownArticlesOnly
+        ? 'My Published Stories'
+        : activeRoleConfig?.beatScope
+        ? `${activeRoleConfig.beatScope} Articles`
+        : 'Live Articles',
+      shortLabel: activeRoleConfig?.ownArticlesOnly ? 'My Stories' : 'Live Articles',
       group: 'Editorial Workflow',
       icon: Edit3,
-      badge: articles.length,
+      badge: scopedArticles.length,
     },
     {
       id: 'announcements',
@@ -1560,11 +1700,19 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
     },
   ];
 
-  const menuGroups: ('Editorial Workflow' | 'Publication & Roster' | 'Administration')[] = [
+  // Strictly show ONLY the tabs assigned to the signed-in role
+  const deskMenuItems = activeRoleConfig
+    ? allDeskMenuItems.filter((item) => activeRoleConfig.allowedTabs.includes(item.id))
+    : allDeskMenuItems;
+
+  const allMenuGroups: ('Editorial Workflow' | 'Publication & Roster' | 'Administration')[] = [
     'Editorial Workflow',
     'Publication & Roster',
     'Administration',
   ];
+  const menuGroups = allMenuGroups.filter((groupName) =>
+    deskMenuItems.some((item) => item.group === groupName)
+  );
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-stone-900/80 backdrop-blur-xs flex justify-center p-2 sm:p-3 md:p-5">
@@ -1592,67 +1740,127 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
 
             {isAuthenticated && (
               <>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDeskVolumeIssue(currentVolumeIssue);
-                    setDeskAcademicYear(currentAcademicYear);
-                    setDeskCirculation(currentCirculation);
-                    setDeskIssn(currentIssn);
-                    setDeskMotto(currentMotto);
-                    setDeskTaglineDescription(currentTaglineDescription);
-                    setDeskIssnAutoNotice(false);
-                    setIsEditEditionModalOpen(true);
-                  }}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-semibold bg-[#34070E]/90 hover:bg-[#5C1521] border border-[#D4AF37]/50 text-[#F3C562] transition-colors cursor-pointer"
-                  title="Edit Publication Volume, Issue No. & School Year (S.Y.)"
-                >
-                  <Edit3 className="w-3.5 h-3.5 text-[#D4AF37]" />
-                  <span>Edit Issue & S.Y.</span>
-                </button>
+                {activeRoleConfig?.canEditEdition && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDeskVolumeIssue(currentVolumeIssue);
+                        setDeskAcademicYear(currentAcademicYear);
+                        setDeskCirculation(currentCirculation);
+                        setDeskIssn(currentIssn);
+                        setDeskMotto(currentMotto);
+                        setDeskTaglineDescription(currentTaglineDescription);
+                        setDeskIssnAutoNotice(false);
+                        setIsEditEditionModalOpen(true);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-semibold bg-[#34070E]/90 hover:bg-[#5C1521] border border-[#D4AF37]/50 text-[#F3C562] transition-colors cursor-pointer"
+                      title="Edit Publication Volume, Issue No. & School Year (S.Y.)"
+                    >
+                      <Edit3 className="w-3.5 h-3.5 text-[#D4AF37]" />
+                      <span>Edit Issue & S.Y.</span>
+                    </button>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDeskVolumeIssue(currentVolumeIssue);
-                    setDeskAcademicYear(currentAcademicYear);
-                    setDeskCirculation(currentCirculation);
-                    setDeskIssn(currentIssn);
-                    setDeskMotto(currentMotto);
-                    setDeskTaglineDescription(currentTaglineDescription);
-                    setDeskIssnAutoNotice(false);
-                    setIsEditEditionModalOpen(true);
-                  }}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-semibold bg-[#34070E]/90 hover:bg-[#5C1521] border border-[#D4AF37]/50 text-[#F3C562] transition-colors cursor-pointer"
-                  title="Edit Announcements Circulation & Electronic ISSN"
-                >
-                  <Edit3 className="w-3.5 h-3.5 text-[#D4AF37]" />
-                  <span>Edit Circulation & ISSN</span>
-                </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDeskVolumeIssue(currentVolumeIssue);
+                        setDeskAcademicYear(currentAcademicYear);
+                        setDeskCirculation(currentCirculation);
+                        setDeskIssn(currentIssn);
+                        setDeskMotto(currentMotto);
+                        setDeskTaglineDescription(currentTaglineDescription);
+                        setDeskIssnAutoNotice(false);
+                        setIsEditEditionModalOpen(true);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-semibold bg-[#34070E]/90 hover:bg-[#5C1521] border border-[#D4AF37]/50 text-[#F3C562] transition-colors cursor-pointer"
+                      title="Edit Announcements Circulation & Electronic ISSN"
+                    >
+                      <Edit3 className="w-3.5 h-3.5 text-[#D4AF37]" />
+                      <span>Edit Circulation & ISSN</span>
+                    </button>
+                  </>
+                )}
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDeskMotto(currentMotto);
-                    setDeskTaglineDescription(currentTaglineDescription);
-                    setIsEditMottoModalOpen(true);
-                  }}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-semibold bg-[#34070E]/90 hover:bg-[#5C1521] border border-[#D4AF37]/50 text-[#F3C562] transition-colors cursor-pointer"
-                  title="Edit “Ideas in ink. Voices in motion.” & Masthead Subtitle Description"
-                >
-                  <Edit3 className="w-3.5 h-3.5 text-[#D4AF37]" />
-                  <span>Edit Motto & Tagline</span>
-                </button>
+                {activeRoleConfig?.canEditMotto && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDeskMotto(currentMotto);
+                      setDeskTaglineDescription(currentTaglineDescription);
+                      setIsEditMottoModalOpen(true);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-semibold bg-[#34070E]/90 hover:bg-[#5C1521] border border-[#D4AF37]/50 text-[#F3C562] transition-colors cursor-pointer"
+                    title="Edit “Ideas in ink. Voices in motion.” & Masthead Subtitle Description"
+                  >
+                    <Edit3 className="w-3.5 h-3.5 text-[#D4AF37]" />
+                    <span>Edit Motto & Tagline</span>
+                  </button>
+                )}
 
-                <button
-                  type="button"
-                  onClick={handleOpenUploadSlideModal}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-semibold bg-[#34070E]/90 hover:bg-[#5C1521] border border-[#D4AF37]/50 text-[#F3C562] transition-colors cursor-pointer"
-                  title="Upload or change the 1000×500 slide photo for News, Features, Opinion, or Sports posts"
-                >
-                  <Camera className="w-3.5 h-3.5 text-[#D4AF37]" />
-                  <span>Upload Slide Photo</span>
-                </button>
+                {activeRoleConfig?.canUploadSlideMedia && (
+                  <button
+                    type="button"
+                    onClick={handleOpenUploadSlideModal}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-semibold bg-[#34070E]/90 hover:bg-[#5C1521] border border-[#D4AF37]/50 text-[#F3C562] transition-colors cursor-pointer"
+                    title="Upload or change the 1000×500 slide photo or video (YouTube, Google Drive, .mp4)"
+                  >
+                    <Film className="w-3.5 h-3.5 text-[#D4AF37]" />
+                    <span>Upload Slide Photo / Video</span>
+                  </button>
+                )}
+
+                {/* Auto-Sync Preview <-> Published Live Control */}
+                {activeRoleConfig?.canManageAutoSync && (
+                  <div className="inline-flex items-center rounded overflow-hidden border border-emerald-500/40 bg-[#250409]/95">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = !autoSyncEnabled;
+                        onToggleAutoSync?.(next);
+                        showToast(
+                          next
+                            ? 'Auto-Sync enabled: all Preview changes automatically save to Published Live!'
+                            : 'Auto-Sync paused. Click Sync Now to push changes to Live.'
+                        );
+                      }}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+                        autoSyncEnabled
+                          ? 'text-emerald-300 hover:bg-emerald-950/60'
+                          : 'text-amber-300 hover:bg-amber-950/60'
+                      }`}
+                      title={
+                        autoSyncEnabled
+                          ? `Auto-Sync ON: Changes in Preview automatically save to Firestore & reveal identically on Published Live${lastSyncedAt ? ` (Last synced ${lastSyncedAt})` : ''}`
+                          : 'Auto-Sync OFF — click to re-enable automatic live saving'
+                      }
+                    >
+                      <Cloud className="w-3.5 h-3.5" />
+                      <span>{autoSyncEnabled ? 'Auto-Sync: ON' : 'Auto-Sync: OFF'}</span>
+                    </button>
+                    {onSyncAllToCloud && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          showToast('Syncing Preview changes to Live Portal...');
+                          const ok = await onSyncAllToCloud();
+                          showToast(
+                            ok
+                              ? 'All Preview changes synced! Live published portal now shows the exact same output.'
+                              : 'Sync completed with partial warnings. Please check connection.'
+                          );
+                        }}
+                        className="inline-flex items-center gap-1 px-2 py-1.5 text-[11px] font-bold bg-emerald-600/25 hover:bg-emerald-600/40 text-emerald-200 border-l border-emerald-500/40 transition-colors cursor-pointer"
+                        title="Force sync all current Preview changes to Published Live"
+                      >
+                        <RefreshCw
+                          className={`w-3 h-3 ${syncStatus === 'syncing' ? 'animate-spin' : ''}`}
+                        />
+                        <span>{syncStatus === 'syncing' ? 'Syncing...' : 'Sync Live'}</span>
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 <button
                   type="button"
@@ -1676,12 +1884,23 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                 {userProfile && (
                   <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 bg-[#34070E]/90 border border-[#681622] rounded text-xs text-stone-200">
                     <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                    <span className="font-semibold text-white truncate max-w-[140px]">
+                    <span className="font-semibold text-white truncate max-w-[130px]">
                       {userProfile.displayName}
                     </span>
                     <span className="text-[10px] uppercase font-bold text-[#F3C562] px-1.5 py-0.2 bg-[#5C1521] border border-[#D4AF37]/40 rounded">
-                      {userProfile.role === 'adviser' ? 'Adviser' : 'Editor'}
+                      {activeRoleConfig?.shortTitle || (userProfile.role === 'adviser' ? 'Adviser' : 'Editor')}
                     </span>
+                    {onOpenAccountModal && (
+                      <button
+                        type="button"
+                        onClick={onOpenAccountModal}
+                        className="ml-1 inline-flex items-center gap-1 text-[11px] text-[#F3C562] hover:text-white hover:underline font-medium cursor-pointer"
+                        title="Change my account password"
+                      >
+                        <KeyRound className="w-3 h-3" />
+                        <span>Password</span>
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => {
@@ -1690,27 +1909,29 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                         showToast('Signed out of Editorial Desk');
                       }}
                       className="ml-1 text-[11px] text-amber-300 hover:text-white hover:underline font-medium cursor-pointer"
-                      title="Sign Out or switch accounts"
+                      title="Sign Out"
                     >
                       Sign Out
                     </button>
                   </div>
                 )}
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (confirm('Reset all stories, submissions, and notices back to initial demo state?')) {
-                      onResetDefaults();
-                      showToast('Database reset to official default state');
-                    }
-                  }}
-                  className="px-2.5 py-1.5 rounded bg-[#34070E]/80 hover:bg-[#5C1521] border border-[#681622] text-stone-200 text-xs flex items-center gap-1 transition-colors cursor-pointer"
-                  title="Reset sample data"
-                >
-                  <RotateCcw className="w-3.5 h-3.5 text-[#D4AF37]" />
-                  <span className="hidden md:inline">Reset Demo</span>
-                </button>
+                {activeRoleConfig?.canResetDemo && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (confirm('Reset all stories, submissions, and notices back to initial demo state?')) {
+                        onResetDefaults();
+                        showToast('Database reset to official default state');
+                      }
+                    }}
+                    className="px-2.5 py-1.5 rounded bg-[#34070E]/80 hover:bg-[#5C1521] border border-[#681622] text-stone-200 text-xs flex items-center gap-1 transition-colors cursor-pointer"
+                    title="Reset sample data"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-[#D4AF37]" />
+                    <span className="hidden md:inline">Reset Demo</span>
+                  </button>
+                )}
               </>
             )}
 
@@ -1724,72 +1945,106 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
           </div>
         </div>
 
-        {/* Auth Gate Screen (if locked) */}
+        {/* Auth Gate Screen (if locked): 10-Role Editorial Position Login */}
         {!isAuthenticated ? (
-          <div className="p-8 sm:p-12 text-center max-w-md mx-auto my-auto space-y-5">
-            <div className="flex items-center justify-center mx-auto">
-              <InkspirerLogo size="lg" />
-            </div>
-            <div>
+          <div className="p-6 sm:p-8 max-w-2xl mx-auto my-auto w-full overflow-y-auto space-y-5">
+            <div className="text-center space-y-2">
+              <div className="flex items-center justify-center mx-auto">
+                <InkspirerLogo size="lg" />
+              </div>
               <h3 className="font-serif text-2xl font-bold text-stone-900">
-                Editorial Board Authorization
+                Editorial Board Role Authorization
               </h3>
-              <p className="text-xs text-stone-600 mt-1">
-                Enter your Adviser PIN or Student Editor Access Code to manage publications, review submissions, and post announcements.
+              <p className="text-xs text-stone-600 max-w-md mx-auto">
+                Select your editorial position and enter your private account password. Each role accesses only its own assigned workspace and tasks.
               </p>
             </div>
 
-            <form onSubmit={handleAuthSubmit} className="space-y-3">
-              <input
-                type="password"
-                value={pinCode}
-                onChange={(e) => setPinCode(e.target.value)}
-                placeholder="Enter PIN (e.g. 1991)"
-                className="w-full text-center px-4 py-2 text-sm border border-stone-300 rounded font-mono tracking-widest focus:ring-1 focus:ring-[#4A0E17] focus:outline-none"
-              />
+            <div className="grid grid-cols-2 sm:grid-cols-2 gap-2">
+              {EDITORIAL_ROLES.map((role) => {
+                const isSelected = selectedGateRoleId === role.id;
+                return (
+                  <button
+                    key={role.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedGateRoleId(role.id);
+                      setAuthError('');
+                      setPinCode('');
+                    }}
+                    className={`p-2.5 rounded-lg border text-left transition-all cursor-pointer ${
+                      isSelected
+                        ? 'bg-[#4A0E17] text-white border-[#D4AF37] shadow-xs'
+                        : 'bg-stone-50 text-stone-800 border-stone-200 hover:border-[#4A0E17]/50'
+                    }`}
+                  >
+                    <div className={`text-xs font-bold truncate ${isSelected ? 'text-[#F3C562]' : 'text-stone-900'}`}>
+                      {role.title}
+                    </div>
+                    <div className={`text-[10px] truncate mt-0.5 ${isSelected ? 'text-stone-200' : 'text-stone-500'}`}>
+                      {role.beatScope ? `${role.beatScope} Beat Desk` : role.department}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <form onSubmit={handleAuthSubmit} className="space-y-3 bg-stone-50 p-4 rounded-lg border border-stone-200">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-stone-700 mb-1">
+                    Account Password ({getEditorialRoleConfig(selectedGateRoleId)?.title})
+                  </label>
+                  <input
+                    type="password"
+                    value={pinCode}
+                    onChange={(e) => setPinCode(e.target.value)}
+                    placeholder="Enter role password"
+                    className="w-full px-3 py-2 text-sm border border-stone-300 rounded bg-white focus:ring-2 focus:ring-[#D4AF37] focus:border-[#4A0E17] focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-stone-700 mb-1">
+                    Your Name <span className="text-stone-400 font-normal">(Optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={gateStaffName}
+                    onChange={(e) => setGateStaffName(e.target.value)}
+                    placeholder={
+                      selectedGateRoleId === 'publication-adviser'
+                        ? activeAdviserConfig.name
+                        : getEditorialRoleConfig(selectedGateRoleId)?.title || ''
+                    }
+                    className="w-full px-3 py-2 text-sm border border-stone-300 rounded bg-white focus:ring-2 focus:ring-[#D4AF37] focus:border-[#4A0E17] focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {!hasCustomPassword(selectedGateRoleId) && (
+                <div className="text-[11px] text-stone-600">
+                  Default password:{' '}
+                  <code className="px-1.5 py-0.5 rounded bg-stone-200 text-[#4A0E17] font-mono font-bold">
+                    {getEditorialRoleConfig(selectedGateRoleId)?.defaultPassword}
+                  </code>{' '}
+                  (you can change it after signing in)
+                </div>
+              )}
+
               {authError && <div className="text-xs text-red-600 font-medium">{authError}</div>}
+
               <button
                 type="submit"
-                className="w-full py-2.5 text-xs font-semibold text-white bg-[#4A0E17] hover:bg-[#5C1521] rounded transition-colors cursor-pointer"
+                disabled={gateIsSubmitting || !pinCode.trim()}
+                className="w-full py-2.5 text-xs font-bold text-white bg-[#4A0E17] hover:bg-[#5C1521] disabled:opacity-50 rounded transition-colors cursor-pointer"
               >
-                Verify & Enter Editorial Desk
+                {gateIsSubmitting
+                  ? 'Verifying Credentials...'
+                  : `Sign In as ${getEditorialRoleConfig(selectedGateRoleId)?.title}`}
               </button>
             </form>
 
-            <div className="space-y-2 pt-2 border-t border-stone-200">
-              <div className="text-[11px] font-semibold text-stone-500 uppercase tracking-wider">
-                Instant Staff Sign-In (Official Credentials)
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  loginAsAdviserDemo({
-                    name: activeAdviserConfig.name,
-                    email: activeAdviserConfig.email,
-                    designation: `${activeAdviserConfig.role} · ${activeAdviserConfig.designation}`,
-                    department: activeAdviserConfig.department,
-                    photoUrl: activeAdviserConfig.photoUrl || null,
-                  });
-                  setIsPinUnlocked(true);
-                  showToast(`Signed in as ${activeAdviserConfig.name} (${activeAdviserConfig.role})`);
-                }}
-                className="w-full py-2 px-3 text-xs font-semibold rounded bg-[#4A0E17] hover:bg-[#5C1521] text-[#F3C562] border border-[#6B1420] transition-colors flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <span>🔑 Log in as {activeAdviserConfig.name} (Portal Adviser)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  loginAsEditorDemo();
-                  setIsPinUnlocked(true);
-                  showToast('Signed in as John Cedric Morales (Editor-in-Chief)');
-                }}
-                className="w-full py-2 px-3 text-xs font-semibold rounded bg-[#5C1521] hover:bg-[#6D1A28] text-white border border-[#6B1420] transition-colors flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <span>✍️ Log in as John Cedric Morales (Editor-in-Chief)</span>
-              </button>
-
+            <div className="pt-1 border-t border-stone-200">
               <button
                 type="button"
                 onClick={async () => {
@@ -1804,7 +2059,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                 }}
                 className="w-full py-2 px-3 text-xs font-semibold rounded bg-white hover:bg-stone-50 text-stone-800 border border-stone-300 transition-colors flex items-center justify-center gap-2 cursor-pointer"
               >
-                <span>🌐 Sign in with DepEd / Google Account</span>
+                <span>Sign in with DepEd / Google Account</span>
               </button>
             </div>
           </div>
@@ -1974,16 +2229,44 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
 
               {/* TAB BODY */}
               <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+              {/* Role-Scoped Workspace Banner */}
+              {activeRoleConfig && (
+                <div className="mb-5 px-4 py-2.5 rounded-lg bg-[#FBF9F5] border border-[#D4AF37]/50 flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="px-2 py-0.5 rounded bg-[#4A0E17] text-[#F3C562] font-bold uppercase tracking-wider text-[10px]">
+                      {activeRoleConfig.title}
+                    </span>
+                    <span className="text-stone-700 font-medium">
+                      {activeRoleConfig.taskSummary}
+                    </span>
+                  </div>
+                  {onOpenAccountModal && (
+                    <button
+                      type="button"
+                      onClick={onOpenAccountModal}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-white hover:bg-stone-100 border border-stone-300 text-[#4A0E17] font-semibold text-[11px] shrink-0 cursor-pointer"
+                    >
+                      <KeyRound className="w-3 h-3 text-[#4A0E17]" />
+                      <span>My Account & Password</span>
+                    </button>
+                  )}
+                </div>
+              )}
+
               {/* TAB 1: SUBMISSIONS QUEUE */}
-              {activeTab === 'submissions' && (
+              {activeTab === 'submissions' && activeRoleConfig?.allowedTabs.includes('submissions') && (
                 <div className="space-y-6">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-stone-200 pb-3">
                     <div>
                       <h3 className="font-serif text-xl font-bold text-stone-900">
-                        Aspiring Student Writer Submissions
+                        {activeRoleConfig?.beatScope
+                          ? `${activeRoleConfig.beatScope} Beat Student Submissions`
+                          : 'Aspiring Student Writer Submissions'}
                       </h3>
                       <p className="text-xs text-stone-500">
-                        Review incoming articles submitted by BNHS learners. Click any submission to inspect manuscript, provide feedback, or publish live to the newsletter.
+                        {activeRoleConfig?.beatScope
+                          ? `Showing incoming ${activeRoleConfig.beatScope} submissions assigned to your desk.`
+                          : 'Review incoming articles submitted by BNHS learners. Click any submission to inspect manuscript, provide feedback, or publish live to the newsletter.'}
                       </p>
                     </div>
                     <div className="text-xs text-stone-600 bg-stone-100 px-3 py-1 rounded">
@@ -1991,13 +2274,15 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                     </div>
                   </div>
 
-                  {submissions.length === 0 ? (
+                  {scopedSubmissions.length === 0 ? (
                     <div className="py-12 text-center text-stone-500 text-xs">
-                      No submissions in queue. Students can submit articles through the "Submit a Story" modal.
+                      {activeRoleConfig?.beatScope
+                        ? `No ${activeRoleConfig.beatScope} submissions in queue right now.`
+                        : 'No submissions in queue. Students can submit articles through the "Submit a Story" modal.'}
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 gap-4">
-                      {submissions.map((sub) => {
+                      {scopedSubmissions.map((sub) => {
                         const statusColors = {
                           pending: 'bg-amber-50 text-amber-800 border-amber-200',
                           approved: 'bg-emerald-50 text-emerald-800 border-emerald-200',
@@ -2234,11 +2519,19 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                           Publication Category <span className="text-red-500">*</span>
                         </label>
                         <select
-                          value={composerCategory}
+                          value={activeRoleConfig?.beatScope || composerCategory}
                           onChange={(e) => setComposerCategory(e.target.value as Category)}
-                          className="w-full px-3 py-2 text-xs border border-stone-300 rounded bg-white font-medium focus:ring-1 focus:ring-[#0B2545] focus:outline-none"
+                          disabled={Boolean(activeRoleConfig?.beatScope)}
+                          className="w-full px-3 py-2 text-xs border border-stone-300 rounded bg-white font-medium focus:ring-1 focus:ring-[#0B2545] focus:outline-none disabled:bg-stone-100 disabled:text-stone-700"
                         >
-                          {categories.map((c) => (
+                          {(activeRoleConfig?.beatScope
+                            ? categories.filter(
+                                (c) =>
+                                  c.name.toLowerCase() ===
+                                  activeRoleConfig.beatScope!.toLowerCase()
+                              )
+                            : categories
+                          ).map((c) => (
                             <option key={c.id} value={c.name}>
                               {c.name}
                             </option>
@@ -2558,38 +2851,57 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-200 pb-3">
                     <div>
                       <h3 className="font-serif text-xl font-bold text-stone-900">
-                        Manage Published Articles & Categories
+                        {activeRoleConfig?.ownArticlesOnly
+                          ? 'My Published Stories'
+                          : activeRoleConfig?.beatScope
+                          ? `Manage ${activeRoleConfig.beatScope} Articles`
+                          : 'Manage Published Articles & Categories'}
                       </h3>
                       <p className="text-xs text-stone-500">
-                        Create, edit, update, delete stories, change publication categories, and upload/replace story photos.
+                        {activeRoleConfig?.ownArticlesOnly
+                          ? 'View and edit stories published under your Staff Writer account.'
+                          : activeRoleConfig?.beatScope
+                          ? `Manage, edit, and update photos for ${activeRoleConfig.beatScope} section stories.`
+                          : 'Create, edit, update, delete stories, change publication categories, and upload/replace story photos.'}
                       </p>
                     </div>
-                    <button
-                      onClick={() => setActiveTab('compose')}
-                      className="px-3.5 py-2 text-xs font-semibold text-white bg-[#0B2545] hover:bg-[#133E87] rounded transition-colors flex items-center gap-1.5 shrink-0 shadow-xs"
-                    >
-                      <PlusCircle className="w-3.5 h-3.5" />
-                      <span>Create New Story</span>
-                    </button>
+                    {activeRoleConfig?.allowedTabs.includes('compose') && (
+                      <button
+                        onClick={() => setActiveTab('compose')}
+                        className="px-3.5 py-2 text-xs font-semibold text-white bg-[#0B2545] hover:bg-[#133E87] rounded transition-colors flex items-center gap-1.5 shrink-0 shadow-xs cursor-pointer"
+                      >
+                        <PlusCircle className="w-3.5 h-3.5" />
+                        <span>Create New Story</span>
+                      </button>
+                    )}
                   </div>
 
                   {/* Maroon Filter & Search Bar */}
                   <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-[#38080F] p-2.5 rounded-lg border border-[#58111A] text-white">
                     <div className="flex items-center gap-1 overflow-x-auto">
-                      <button
-                        type="button"
-                        onClick={() => setArticleCategoryFilter('All')}
-                        className={`px-3 py-1 text-xs rounded font-medium transition-colors whitespace-nowrap cursor-pointer ${
-                          articleCategoryFilter === 'All'
-                            ? 'bg-[#D4AF37] text-[#2A050B] font-bold'
-                            : 'text-stone-200 hover:bg-[#5C1521]'
-                        }`}
-                      >
-                        <span>All</span>
-                        <span className="ml-1 text-[10px] opacity-80">({articles.length})</span>
-                      </button>
-                      {categories.map((cat) => {
-                        const count = articles.filter(
+                      {!activeRoleConfig?.beatScope && (
+                        <button
+                          type="button"
+                          onClick={() => setArticleCategoryFilter('All')}
+                          className={`px-3 py-1 text-xs rounded font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                            articleCategoryFilter === 'All'
+                              ? 'bg-[#D4AF37] text-[#2A050B] font-bold'
+                              : 'text-stone-200 hover:bg-[#5C1521]'
+                          }`}
+                        >
+                          <span>All</span>
+                          <span className="ml-1 text-[10px] opacity-80">({scopedArticles.length})</span>
+                        </button>
+                      )}
+                      {(activeRoleConfig?.beatScope
+                        ? categories.filter(
+                            (cat) =>
+                              cat.name.toLowerCase() ===
+                              activeRoleConfig.beatScope!.toLowerCase()
+                          )
+                        : categories
+                      ).map((cat) => {
+                        const count = scopedArticles.filter(
                           (a) => a.category.toLowerCase() === cat.name.toLowerCase()
                         ).length;
                         return (
@@ -2625,9 +2937,16 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
 
                   {/* Articles List */}
                   <div className="space-y-3">
-                    {articles
+                    {scopedArticles.length === 0 && (
+                      <div className="py-10 text-center bg-stone-50 rounded-lg border border-dashed border-stone-300 text-xs text-stone-500">
+                        {activeRoleConfig?.ownArticlesOnly
+                          ? 'You have not published any stories under your name yet. Use "Publish Story" to write your first piece!'
+                          : 'No published articles in this section yet.'}
+                      </div>
+                    )}
+                    {scopedArticles
                       .filter((art) => {
-                        if (articleCategoryFilter !== 'All' && art.category !== articleCategoryFilter) return false;
+                        if (articleCategoryFilter !== 'All' && art.category.toLowerCase() !== articleCategoryFilter.toLowerCase()) return false;
                         if (articleSearchQuery.trim()) {
                           const q = articleSearchQuery.toLowerCase();
                           return art.title.toLowerCase().includes(q) || art.author.toLowerCase().includes(q);
@@ -3102,8 +3421,8 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                         onClick={handleOpenUploadSlideModal}
                         className="px-3 py-1.5 text-xs font-bold text-[#F3C562] bg-[#4A0E17] hover:bg-[#5C1521] border border-[#681622] rounded-md transition-colors flex items-center gap-1.5 shadow-xs shrink-0 cursor-pointer"
                       >
-                        <Camera className="w-3.5 h-3.5 text-[#D4AF37]" />
-                        <span>Upload Slide Photo</span>
+                        <Film className="w-3.5 h-3.5 text-[#D4AF37]" />
+                        <span>Upload Slide Photo / Video</span>
                       </button>
                     </div>
                   </div>
@@ -3512,8 +3831,8 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                         onClick={handleOpenUploadSlideModal}
                         className="px-4 py-2 text-xs font-bold text-[#F3C562] bg-[#4A0E17] hover:bg-[#5C1521] border border-[#D4AF37]/50 rounded-md transition-colors flex items-center gap-2 shadow-xs shrink-0 cursor-pointer"
                       >
-                        <Camera className="w-4 h-4 text-[#D4AF37]" />
-                        <span>Upload Slide Photo</span>
+                        <Film className="w-4 h-4 text-[#D4AF37]" />
+                        <span>Upload Slide Photo / Video</span>
                       </button>
 
                       <button
@@ -6201,184 +6520,291 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
           </div>
         )}
 
-        {/* Dedicated Upload 1000x500 Category Slide Photo Modal inside Editorial Desk */}
-        {isUploadSlideModalOpen && (
-          <div
-            className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-stone-950/80 backdrop-blur-xs"
-            onClick={() => setIsUploadSlideModalOpen(false)}
-          >
+        {/* Dedicated Upload 1000x500 Category Slide Photo / Video Modal inside Editorial Desk */}
+        {isUploadSlideModalOpen && (() => {
+          const parsedSlidePreviewVideo = parseVideoUrl(slideModalVideoUrl);
+          const selectedPostTitle =
+            articles.find((a) => a.id === slideModalPostId)?.title || '';
+          return (
             <div
-              className="bg-[#FFFDF9] text-[#1C1917] w-full max-w-lg rounded-lg shadow-2xl border border-[#681622] overflow-hidden"
-              onClick={(e) => e.stopPropagation()}
+              className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-stone-950/80 backdrop-blur-xs"
+              onClick={() => setIsUploadSlideModalOpen(false)}
             >
-              <div className="bg-[#4A0E17] text-white px-5 py-4 border-b border-[#34070E] flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <InkspirerLogo size="sm" />
-                  <div>
-                    <div className="text-[10px] font-bold uppercase tracking-widest text-[#F3C562]">
-                      The Inkspirer · 1000 × 500 Category Slideshow Menu
-                    </div>
-                    <h3 className="font-serif text-lg font-bold text-white flex items-center gap-2">
-                      <Camera className="w-4 h-4 text-[#D4AF37]" />
-                      <span>Upload 1000 × 500 Slide Picture</span>
-                    </h3>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIsUploadSlideModalOpen(false)}
-                  className="p-1.5 rounded text-stone-300 hover:text-white hover:bg-[#5C1521] transition-colors cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <form onSubmit={handleSaveSlidePhotoFromDesk} className="p-5 space-y-4 max-h-[82vh] overflow-y-auto text-xs">
-                {/* Step 1: Select Category */}
-                <div>
-                  <label className="block font-bold uppercase tracking-wider text-stone-800 mb-1.5">
-                    1. Select Category (News, Features, Opinion, Sports)
-                  </label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {[
-                      'News',
-                      'Features',
-                      'Opinion',
-                      'Sports',
-                      ...categories
-                        .map((c) => c.name)
-                        .filter(
-                          (n) =>
-                            !['news', 'features', 'opinion', 'sports', 'announcements'].includes(
-                              n.toLowerCase()
-                            )
-                        ),
-                    ].map((catName) => {
-                      const active = slideModalCategory.toLowerCase() === catName.toLowerCase();
-                      return (
-                        <button
-                          key={catName}
-                          type="button"
-                          onClick={() => handleSlideCategoryChange(catName)}
-                          className={`px-3 py-1.5 rounded font-bold uppercase tracking-wider text-[11px] border transition-colors cursor-pointer ${
-                            active
-                              ? 'bg-[#4A0E17] text-[#F3C562] border-[#4A0E17]'
-                              : 'bg-stone-100 text-stone-700 border-stone-300 hover:bg-stone-200'
-                          }`}
-                        >
-                          {catName}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Step 2: Select Post in that Category */}
-                <div>
-                  <label className="block font-bold uppercase tracking-wider text-stone-800 mb-1.5">
-                    2. Link Slide Picture to Post ({slideModalCategory})
-                  </label>
-                  {articles.filter(
-                    (a) => a.category.toLowerCase() === slideModalCategory.toLowerCase()
-                  ).length > 0 ? (
-                    <select
-                      value={slideModalPostId}
-                      onChange={(e) => handleSlidePostChange(e.target.value)}
-                      className="w-full px-3 py-2 rounded border border-stone-300 bg-white text-stone-900 font-medium focus:outline-none focus:ring-2 focus:ring-[#4A0E17] focus:border-[#4A0E17]"
-                    >
-                      {articles
-                        .filter(
-                          (a) => a.category.toLowerCase() === slideModalCategory.toLowerCase()
-                        )
-                        .map((post) => (
-                          <option key={post.id} value={post.id}>
-                            {post.title}
-                          </option>
-                        ))}
-                    </select>
-                  ) : (
-                    <p className="text-stone-500 italic">
-                      No published posts found in {slideModalCategory}. Publish a story in this category first.
-                    </p>
-                  )}
-                </div>
-
-                {/* Step 3: Upload File or Paste Image URL / Google Drive Link */}
-                {slideModalPostId && (
-                  <div className="space-y-3">
-                    <label className="block font-bold uppercase tracking-wider text-stone-800">
-                      3. Upload Picture (1000 × 500) or Paste Image / Google Drive Link
-                    </label>
-
-                    <div className="flex flex-col sm:flex-row gap-2">
-                      <label className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded bg-[#4A0E17] text-[#F3C562] font-semibold hover:bg-[#5C1521] transition-colors cursor-pointer shrink-0">
-                        <Upload className="w-3.5 h-3.5" />
-                        <span>Upload Photo File</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handleSlidePhotoFileUpload}
-                          className="hidden"
-                        />
-                      </label>
-
-                      <div className="relative flex-1">
-                        <ImageIcon className="w-3.5 h-3.5 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                        <input
-                          type="text"
-                          value={slideModalImageUrl}
-                          onChange={(e) => setSlideModalImageUrl(e.target.value)}
-                          placeholder="Or paste image URL / Google Drive share link..."
-                          className="w-full pl-8 pr-3 py-2 rounded border border-stone-300 bg-white text-stone-900 focus:outline-none focus:ring-2 focus:ring-[#4A0E17] focus:border-[#4A0E17]"
-                        />
+              <div
+                className="bg-[#FFFDF9] text-[#1C1917] w-full max-w-lg rounded-lg shadow-2xl border border-[#681622] overflow-hidden"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="bg-[#4A0E17] text-white px-5 py-4 border-b border-[#34070E] flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <InkspirerLogo size="sm" />
+                    <div>
+                      <div className="text-[10px] font-bold uppercase tracking-widest text-[#F3C562]">
+                        The Inkspirer · 1000 × 500 Category Slideshow Menu
                       </div>
+                      <h3 className="font-serif text-lg font-bold text-white flex items-center gap-2">
+                        <Film className="w-4 h-4 text-[#D4AF37]" />
+                        <span>Upload 1000 × 500 Slide Photo / Video</span>
+                      </h3>
                     </div>
-
-                    {/* Live 1000x500 (2:1) Preview */}
-                    {slideModalImageUrl && (
-                      <div className="rounded-lg overflow-hidden border border-stone-300 bg-stone-900 relative aspect-[2/1] max-h-52 w-full">
-                        <img
-                          src={normalizeImageUrl(slideModalImageUrl)}
-                          alt="1000x500 Slide Preview"
-                          referrerPolicy="no-referrer"
-                          onError={handleImageErrorWithDriveFallback}
-                          className="w-full h-full object-cover"
-                        />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent pointer-events-none" />
-                        <div className="absolute bottom-2.5 left-3 right-3 text-white">
-                          <span className="inline-block px-2 py-0.5 rounded bg-[#D4AF37] text-[#2A050B] font-extrabold uppercase text-[10px] mb-1">
-                            {slideModalCategory}
-                          </span>
-                          <div className="font-serif font-bold text-sm text-[#F3C562] truncate">
-                            {articles.find((a) => a.id === slideModalPostId)?.title}
-                          </div>
-                        </div>
-                      </div>
-                    )}
                   </div>
-                )}
-
-                <div className="pt-3 border-t border-stone-200 flex items-center justify-end gap-2">
                   <button
                     type="button"
                     onClick={() => setIsUploadSlideModalOpen(false)}
-                    className="px-4 py-2 text-xs font-semibold text-stone-600 hover:text-stone-900 hover:bg-stone-100 rounded transition-colors cursor-pointer"
+                    className="p-1.5 rounded text-stone-300 hover:text-white hover:bg-[#5C1521] transition-colors cursor-pointer"
                   >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={!slideModalPostId}
-                    className="px-5 py-2 text-xs font-bold text-[#2A050B] bg-[#D4AF37] hover:bg-[#F3C562] disabled:opacity-50 rounded transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
-                  >
-                    <CheckCircle2 className="w-4 h-4 text-[#4A0E17]" />
-                    <span>Save Slide Picture</span>
+                    <X className="w-4 h-4" />
                   </button>
                 </div>
-              </form>
+
+                <form
+                  onSubmit={handleSaveSlidePhotoFromDesk}
+                  className="p-5 space-y-4 max-h-[82vh] overflow-y-auto text-xs"
+                >
+                  {/* Step 1: Select Category */}
+                  <div>
+                    <label className="block font-bold uppercase tracking-wider text-stone-800 mb-1.5">
+                      1. Select Category (News, Features, Opinion, Sports)
+                    </label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(activeRoleConfig?.beatScope
+                        ? [activeRoleConfig.beatScope]
+                        : [
+                            'News',
+                            'Features',
+                            'Opinion',
+                            'Sports',
+                            ...categories
+                              .map((c) => c.name)
+                              .filter(
+                                (n) =>
+                                  !['news', 'features', 'opinion', 'sports', 'announcements'].includes(
+                                    n.toLowerCase()
+                                  )
+                              ),
+                          ]
+                      ).map((catName) => {
+                        const active = slideModalCategory.toLowerCase() === catName.toLowerCase();
+                        return (
+                          <button
+                            key={catName}
+                            type="button"
+                            onClick={() => handleSlideCategoryChange(catName)}
+                            className={`px-3 py-1.5 rounded font-bold uppercase tracking-wider text-[11px] border transition-colors cursor-pointer ${
+                              active
+                                ? 'bg-[#4A0E17] text-[#F3C562] border-[#4A0E17]'
+                                : 'bg-stone-100 text-stone-700 border-stone-300 hover:bg-stone-200'
+                            }`}
+                          >
+                            {catName}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Step 2: Select Post in that Category */}
+                  <div>
+                    <label className="block font-bold uppercase tracking-wider text-stone-800 mb-1.5">
+                      2. Link Slide Photo / Video to Post ({slideModalCategory})
+                    </label>
+                    {articles.filter(
+                      (a) => a.category.toLowerCase() === slideModalCategory.toLowerCase()
+                    ).length > 0 ? (
+                      <select
+                        value={slideModalPostId}
+                        onChange={(e) => handleSlidePostChange(e.target.value)}
+                        className="w-full px-3 py-2 rounded border border-stone-300 bg-white text-stone-900 font-medium focus:outline-none focus:ring-2 focus:ring-[#4A0E17] focus:border-[#4A0E17]"
+                      >
+                        {articles
+                          .filter(
+                            (a) => a.category.toLowerCase() === slideModalCategory.toLowerCase()
+                          )
+                          .map((post) => (
+                            <option key={post.id} value={post.id}>
+                              {post.videoUrl ? '🎬 ' : ''}
+                              {post.title}
+                            </option>
+                          ))}
+                      </select>
+                    ) : (
+                      <p className="text-stone-500 italic">
+                        No published posts found in {slideModalCategory}. Publish a story in this category first.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Step 3: Choose Media Type (Photo vs Video) */}
+                  {slideModalPostId && (
+                    <div className="space-y-3">
+                      <label className="block font-bold uppercase tracking-wider text-stone-800">
+                        3. Choose Slide Media Type (1000 × 500)
+                      </label>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setSlideModalMediaType('photo')}
+                          className={`px-3 py-2 rounded border font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer ${
+                            slideModalMediaType === 'photo'
+                              ? 'bg-[#4A0E17] text-[#F3C562] border-[#4A0E17] shadow-xs'
+                              : 'bg-stone-100 text-stone-700 border-stone-300 hover:bg-stone-200'
+                          }`}
+                        >
+                          <Camera className="w-3.5 h-3.5" />
+                          <span>Slide Photo (Image)</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSlideModalMediaType('video')}
+                          className={`px-3 py-2 rounded border font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer ${
+                            slideModalMediaType === 'video'
+                              ? 'bg-[#4A0E17] text-[#F3C562] border-[#4A0E17] shadow-xs'
+                              : 'bg-stone-100 text-stone-700 border-stone-300 hover:bg-stone-200'
+                          }`}
+                        >
+                          <Film className="w-3.5 h-3.5" />
+                          <span>Slide Video (YouTube / Drive / .mp4)</span>
+                        </button>
+                      </div>
+
+                      {slideModalMediaType === 'photo' ? (
+                        <div className="space-y-3 pt-1">
+                          <div className="flex flex-col sm:flex-row gap-2">
+                            <label className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded bg-[#4A0E17] text-[#F3C562] font-semibold hover:bg-[#5C1521] transition-colors cursor-pointer shrink-0">
+                              <Upload className="w-3.5 h-3.5" />
+                              <span>Upload Photo File</span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                onChange={handleSlidePhotoFileUpload}
+                                className="hidden"
+                              />
+                            </label>
+
+                            <div className="relative flex-1">
+                              <ImageIcon className="w-3.5 h-3.5 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                              <input
+                                type="text"
+                                value={slideModalImageUrl}
+                                onChange={(e) => setSlideModalImageUrl(e.target.value)}
+                                placeholder="Or paste image URL / Google Drive share link..."
+                                className="w-full pl-8 pr-3 py-2 rounded border border-stone-300 bg-white text-stone-900 focus:outline-none focus:ring-2 focus:ring-[#4A0E17] focus:border-[#4A0E17]"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Live 1000x500 (2:1) Photo Preview */}
+                          {slideModalImageUrl && (
+                            <div className="rounded-lg overflow-hidden border border-stone-300 bg-stone-900 relative aspect-[2/1] max-h-52 w-full">
+                              <img
+                                src={normalizeImageUrl(slideModalImageUrl)}
+                                alt="1000x500 Slide Preview"
+                                referrerPolicy="no-referrer"
+                                onError={handleImageErrorWithDriveFallback}
+                                className="w-full h-full object-cover"
+                              />
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent pointer-events-none" />
+                              <div className="absolute bottom-2.5 left-3 right-3 text-white">
+                                <span className="inline-block px-2 py-0.5 rounded bg-[#D4AF37] text-[#2A050B] font-extrabold uppercase text-[10px] mb-1">
+                                  {slideModalCategory}
+                                </span>
+                                <div className="font-serif font-bold text-sm text-[#F3C562] truncate">
+                                  {selectedPostTitle}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-3 pt-1">
+                          <div>
+                            <div className="relative">
+                              <Film className="w-3.5 h-3.5 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                              <input
+                                type="text"
+                                value={slideModalVideoUrl}
+                                onChange={(e) => setSlideModalVideoUrl(e.target.value)}
+                                placeholder="Paste YouTube URL, Google Drive video link, or .mp4 URL..."
+                                className="w-full pl-8 pr-16 py-2 rounded border border-stone-300 bg-white text-stone-900 focus:outline-none focus:ring-2 focus:ring-[#4A0E17] focus:border-[#4A0E17]"
+                              />
+                              {slideModalVideoUrl && (
+                                <button
+                                  type="button"
+                                  onClick={() => setSlideModalVideoUrl('')}
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-rose-600 hover:text-rose-800 px-1.5 py-0.5 rounded bg-rose-50 cursor-pointer"
+                                >
+                                  Clear
+                                </button>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-stone-500 mt-1.5 leading-relaxed">
+                              Supports <strong>YouTube</strong> (watch, shorts, youtu.be),{' '}
+                              <strong>Google Drive</strong> (set sharing to <em>Anyone with the link</em>), and direct{' '}
+                              <strong>.mp4 / .webm</strong> video URLs. Automatically syncs to Preview & Live!
+                            </p>
+                          </div>
+
+                          {/* Live 1000x500 (2:1) Video Preview */}
+                          {parsedSlidePreviewVideo && (
+                            <div className="space-y-1.5">
+                              <div className="flex items-center justify-between text-[11px]">
+                                <span className="inline-flex items-center gap-1.5 font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+                                  <CheckCircle2 className="w-3 h-3" />
+                                  <span>Detected: {parsedSlidePreviewVideo.label}</span>
+                                </span>
+                                <span className="text-stone-500">1000 × 500 Preview</span>
+                              </div>
+                              <div className="rounded-lg overflow-hidden border border-stone-300 bg-black relative aspect-[2/1] max-h-56 w-full">
+                                {parsedSlidePreviewVideo.type === 'direct' &&
+                                parsedSlidePreviewVideo.directUrl ? (
+                                  <video
+                                    src={parsedSlidePreviewVideo.directUrl}
+                                    controls
+                                    muted
+                                    playsInline
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  <iframe
+                                    src={parsedSlidePreviewVideo.mutedEmbedUrl || parsedSlidePreviewVideo.embedUrl}
+                                    title="Slide Video Preview"
+                                    className="w-full h-full border-0"
+                                    allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+                                    allowFullScreen
+                                  />
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="pt-3 border-t border-stone-200 flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsUploadSlideModalOpen(false)}
+                      className="px-4 py-2 text-xs font-semibold text-stone-600 hover:text-stone-900 hover:bg-stone-100 rounded transition-colors cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={!slideModalPostId}
+                      className="px-5 py-2 text-xs font-bold text-[#2A050B] bg-[#D4AF37] hover:bg-[#F3C562] disabled:opacity-50 rounded transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
+                    >
+                      <CheckCircle2 className="w-4 h-4 text-[#4A0E17]" />
+                      <span>
+                        {slideModalMediaType === 'video' ? 'Save Slide Video' : 'Save Slide Picture'}
+                      </span>
+                    </button>
+                  </div>
+                </form>
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </div>
     </div>
   );

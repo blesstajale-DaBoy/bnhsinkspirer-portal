@@ -20,6 +20,7 @@
         "pullQuote": { "type": "string", "maxLength": 512 },
         "imageCaption": { "type": "string", "maxLength": 256 },
         "imageUrl": { "type": "string" },
+        "videoUrl": { "type": "string" },
         "categoryTheme": { "type": "object" },
         "views": { "type": "number" },
         "likes": { "type": "number" },
@@ -81,12 +82,15 @@
     },
     "ArticleComment": {
       "title": "ArticleComment",
-      "description": "Reader comment posted on an article",
+      "description": "Student, faculty, and reader comment posted on an article",
       "type": "object",
       "properties": {
         "articleId": { "type": "string", "maxLength": 128 },
         "authorName": { "type": "string", "maxLength": 128 },
         "authorRole": { "type": "string", "maxLength": 128 },
+        "authorGroup": { "type": "string", "enum": ["student", "faculty", "community"] },
+        "parentId": { "type": "string", "maxLength": 128 },
+        "isEditorialStaff": { "type": "boolean" },
         "message": { "type": "string", "maxLength": 1024 },
         "createdAt": { "type": "string", "maxLength": 64 },
         "likes": { "type": "number" }
@@ -155,6 +159,14 @@
     "/authorProfiles/{profileId}": {
       "schema": "StudentAuthorProfile",
       "description": "Student journalist author bio profiles readable by everyone, managed in the Editorial Desk"
+    },
+    "/editorialStaff/{staffId}": {
+      "schema": "UserProfile",
+      "description": "Editorial board staff & advisers synced between Preview and Published Live"
+    },
+    "/publicationSettings/{settingId}": {
+      "schema": "UserProfile",
+      "description": "Publication edition config, motto/tagline, active adviser config, handover log, and Auto-Sync metadata"
     }
   }
 }

@@ -50,6 +50,7 @@ export interface Article {
   pullQuote?: string;
   imageCaption?: string;
   imageUrl?: string;
+  videoUrl?: string;
   categoryTheme: {
     accentColor: string;
     badgeBg: string;
@@ -136,6 +137,9 @@ export interface ArticleComment {
   articleId: string;
   authorName: string;
   authorRole?: string;
+  authorGroup?: 'student' | 'faculty' | 'community';
+  parentId?: string;
+  isEditorialStaff?: boolean;
   message: string;
   createdAt: string;
   likes: number;

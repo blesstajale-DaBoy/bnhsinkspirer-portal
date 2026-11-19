@@ -10,8 +10,8 @@ import { LeadStory } from './components/LeadStory';
 import { StoryGrid } from './components/StoryGrid';
 import { ArticleReaderModal } from './components/ArticleReaderModal';
 import { SubmitStoryModal } from './components/SubmitStoryModal';
-import { DownloadPortalModal } from './components/DownloadPortalModal';
 import { EditorialDeskModal } from './components/EditorialDeskModal';
+import { StaffLoginModal } from './components/StaffLoginModal';
 import { ReadLaterNotification } from './components/ReadLaterNotification';
 import { Footer } from './components/Footer';
 
@@ -52,6 +52,15 @@ export default function App() {
     deleteAuthorProfile,
     editionConfig,
     updateEditionConfig,
+    activeAdviserConfig,
+    updateActiveAdviserConfig,
+    handoverHistory,
+    addHandoverRecord,
+    autoSyncEnabled,
+    setAutoSyncEnabled,
+    syncStatus,
+    lastSyncedAt,
+    syncAllToCloud,
     resetToDefaults,
   } = useInkspirerStore();
 
@@ -64,8 +73,8 @@ export default function App() {
   // Modals
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
   const [isSubmitOpen, setIsSubmitOpen] = useState(false);
-  const [isDownloadOpen, setIsDownloadOpen] = useState(false);
   const [isEditorialDeskOpen, setIsEditorialDeskOpen] = useState(false);
+  const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [editorialDeskInitialTab, setEditorialDeskInitialTab] = useState<
     'submissions' | 'compose' | 'articles' | 'announcements' | 'categories' | 'staff' | 'author-bios' | 'adviser' | 'subscribers' | undefined
   >(undefined);
@@ -183,21 +192,22 @@ export default function App() {
         }}
         onOpenSubmit={() => setIsSubmitOpen(true)}
         onOpenEditorialDesk={() => setIsEditorialDeskOpen(true)}
-        onOpenDownloadPortal={() => setIsDownloadOpen(true)}
+        onOpenLogin={() => setIsLoginOpen((prev) => !prev)}
         pendingSubmissionsCount={pendingSubmissionsCount}
         categories={categories}
+        syncStatus={syncStatus}
+        autoSyncEnabled={autoSyncEnabled}
+        lastSyncedAt={lastSyncedAt}
       />
 
       {/* Campus Announcements Bulletin Ticker */}
       <CampusBulletin
         announcements={announcements}
-        onUpdateAnnouncement={updateAnnouncement}
       />
 
       {/* Authentic School Publication Masthead */}
       <Masthead
         onOpenSubmit={() => setIsSubmitOpen(true)}
-        onOpenDownloadPortal={() => setIsDownloadOpen(true)}
         onOpenEditorialDesk={() => setIsEditorialDeskOpen(true)}
         onScrollToStories={scrollToStories}
         bookmarksCount={bookmarks.length}
@@ -276,7 +286,6 @@ export default function App() {
           onOpenSubmit={() => setIsSubmitOpen(true)}
           onResetFilters={handleResetFilters}
           showingBookmarks={showingBookmarksOnly}
-          onUpdateAnnouncement={updateAnnouncement}
           authorProfiles={authorProfiles}
         />
       </main>
@@ -289,7 +298,6 @@ export default function App() {
           scrollToStories();
         }}
         onOpenSubmit={() => setIsSubmitOpen(true)}
-        onOpenDownloadPortal={() => setIsDownloadOpen(true)}
         onOpenEditorialDesk={() => setIsEditorialDeskOpen(true)}
         categories={categories}
         editionConfig={editionConfig}
@@ -342,13 +350,15 @@ export default function App() {
         categories={categories}
       />
 
-      {/* Download Portal Modal (Single-file HTML website download) */}
-      <DownloadPortalModal
-        isOpen={isDownloadOpen}
-        onClose={() => setIsDownloadOpen(false)}
-        articles={articles}
-        announcements={announcements}
-        onOpenEditorialDesk={() => setIsEditorialDeskOpen(true)}
+      {/* Staff Firebase Auth Login Modal */}
+      <StaffLoginModal
+        isOpen={isLoginOpen}
+        onClose={() => setIsLoginOpen(false)}
+        onOpenEditorialDesk={() => {
+          setIsLoginOpen(false);
+          setIsEditorialDeskOpen(true);
+        }}
+        activeAdviserConfig={activeAdviserConfig}
       />
 
       {/* Editorial Desk / Adviser Management Console */}
@@ -385,7 +395,17 @@ export default function App() {
         onDeleteAuthorProfile={deleteAuthorProfile}
         editionConfig={editionConfig}
         onUpdateEditionConfig={updateEditionConfig}
+        activeAdviserConfig={activeAdviserConfig}
+        onUpdateActiveAdviserConfig={updateActiveAdviserConfig}
+        handoverHistory={handoverHistory}
+        onAddHandoverRecord={addHandoverRecord}
+        autoSyncEnabled={autoSyncEnabled}
+        onToggleAutoSync={setAutoSyncEnabled}
+        syncStatus={syncStatus}
+        lastSyncedAt={lastSyncedAt}
+        onSyncAllToCloud={syncAllToCloud}
         onViewArticle={handleSelectArticle}
+        onOpenAccountModal={() => setIsLoginOpen(true)}
         onResetDefaults={resetToDefaults}
       />
     </div>
