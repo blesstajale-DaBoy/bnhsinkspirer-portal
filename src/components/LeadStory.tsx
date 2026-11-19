@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowRight, Bookmark, Heart, Eye } from 'lucide-react';
+import { ArrowRight, Bookmark, Heart, Film } from 'lucide-react';
 import { Article, StudentAuthorProfile } from '../types';
 import { EditorialArtwork } from './EditorialArtwork';
 import { AuthorProfile } from './AuthorProfile';
@@ -156,14 +156,22 @@ export const LeadStory: React.FC<LeadStoryProps> = ({
           <div className="lg:col-span-5 flex flex-col">
             <div
               onClick={() => onSelect(article)}
-              className="cursor-pointer group flex-1 rounded border border-stone-200 overflow-hidden flex flex-col bg-stone-50 shadow-xs"
+              className="cursor-pointer group flex-1 rounded border border-stone-200 overflow-hidden flex flex-col bg-stone-50 shadow-xs relative"
             >
-              <EditorialArtwork
-                category={article.category}
-                customImageUrl={article.imageUrl}
-                className="w-full h-64 sm:h-80 lg:h-full min-h-[260px]"
-                variant="lead"
-              />
+              <div className="relative flex-1">
+                <EditorialArtwork
+                  category={article.category}
+                  customImageUrl={article.imageUrl}
+                  className="w-full h-64 sm:h-80 lg:h-full min-h-[260px]"
+                  variant="lead"
+                />
+                {article.videoUrl && (
+                  <div className="absolute top-3 left-3 inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#4A0E17]/95 text-[#F3C562] text-[10px] font-bold uppercase tracking-wider border border-[#D4AF37]/70 shadow-md">
+                    <Film className="w-3 h-3" />
+                    <span>Watch Video</span>
+                  </div>
+                )}
+              </div>
               {article.imageCaption && (
                 <div className="p-3 bg-white border-t border-stone-100 text-[11px] font-serif italic text-stone-500 leading-snug">
                   Fig. 1 — {article.imageCaption}

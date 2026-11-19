@@ -1,4 +1,5 @@
 import { Article, Announcement, StorySubmission, EditorialMember, PublicationCategory, StudentAuthorProfile } from '../types';
+import { DEFAULT_SAMPLE_ARTICLE_VIDEOS } from '../utils/videoUrl';
 
 export const INITIAL_AUTHOR_PROFILES: StudentAuthorProfile[] = [
   {
@@ -167,6 +168,7 @@ export const INITIAL_ARTICLES: Article[] = [
     issue: 'Vol. XXIV · Issue 1',
     pullQuote: 'Our pens carry not just ink, but the authentic lived realities and triumphs of Barobo scholars.',
     imageCaption: 'The Inkspirer delegation with Principal Dr. Arturo R. Hernandez and Publication Adviser Mrs. Maria Elena Delos Reyes at the RSPC 2026 awarding hall.',
+    videoUrl: DEFAULT_SAMPLE_ARTICLE_VIDEOS['art-1'],
     categoryTheme: {
       accentColor: '#133E87',
       badgeBg: 'bg-blue-50',
@@ -199,6 +201,7 @@ export const INITIAL_ARTICLES: Article[] = [
     issue: 'Vol. XXIV · Issue 1',
     pullQuote: 'Science belongs in our hands and in our communities, not locked in distant laboratory manuals.',
     imageCaption: 'STEM researchers demonstrating the bio-composite filter made of discarded oyster shells and agricultural coconut coir fibers.',
+    videoUrl: DEFAULT_SAMPLE_ARTICLE_VIDEOS['art-2'],
     categoryTheme: {
       accentColor: '#047857',
       badgeBg: 'bg-emerald-50',
@@ -230,6 +233,7 @@ export const INITIAL_ARTICLES: Article[] = [
     issue: 'Vol. XXIV · Issue 1',
     pullQuote: 'Campus publications do not exist to be public relations arms; they exist to train conscientious citizens who question, verify, and care.',
     imageCaption: 'Ink on paper, digital keystrokes on screens: student editors deliberate on the front-page editorial stance during layout night.',
+    videoUrl: DEFAULT_SAMPLE_ARTICLE_VIDEOS['art-3'],
     categoryTheme: {
       accentColor: '#9333ea',
       badgeBg: 'bg-purple-50',
@@ -260,6 +264,7 @@ export const INITIAL_ARTICLES: Article[] = [
     issue: 'Vol. XXIV · Issue 1',
     pullQuote: 'With five seconds on the shot clock and the gymnasium roaring, faith in our teammates was the only play that mattered.',
     imageCaption: 'Team Captain Miguel Santos elevating for the game-clinching baseline floater amidst a deafening Barobo crowd.',
+    videoUrl: DEFAULT_SAMPLE_ARTICLE_VIDEOS['art-4'],
     categoryTheme: {
       accentColor: '#d97706',
       badgeBg: 'bg-amber-50',

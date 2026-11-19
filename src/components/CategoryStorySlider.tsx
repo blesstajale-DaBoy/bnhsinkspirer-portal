@@ -12,7 +12,12 @@ import {
 } from 'lucide-react';
 import { Article, PublicationCategory } from '../types';
 import { normalizeImageUrl, handleImageErrorWithDriveFallback } from '../utils/imageUrl';
-import { parseVideoUrl, ParsedVideoMedia } from '../utils/videoUrl';
+import {
+  parseVideoUrl,
+  ParsedVideoMedia,
+  isDirectPlaybackType,
+} from '../utils/videoUrl';
+import { useResolvedVideoUrl } from '../utils/localVideoStore';
 import { EditorialArtwork } from './EditorialArtwork';
 
 interface CategoryStorySliderProps {
@@ -169,11 +174,21 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
     setElapsedMs(0);
   };
 
-  if (slides.length === 0) return null;
-
   const activeSlide = slides[currentIndex] || slides[0];
+  const {
+    resolvedUrl: resolvedActiveVideoUrl,
+    isResolving: isResolvingActiveVideo,
+    isMissingLocal: isMissingLocalActiveVideo,
+  } = useResolvedVideoUrl(activeSlide?.article.videoUrl);
+
+  if (slides.length === 0 || !activeSlide) return null;
+
   const nextSlide = slides.length > 1 ? slides[(currentIndex + 1) % slides.length] : null;
   const { article, resolvedImageUrl, parsedVideo, categoryColor } = activeSlide;
+  const effectiveDirectVideoUrl =
+    parsedVideo && isDirectPlaybackType(parsedVideo.type)
+      ? resolvedActiveVideoUrl || parsedVideo.directUrl
+      : undefined;
   const badgeStyle =
     CATEGORY_BADGE_COLORS[article.category.toLowerCase()] || {
       bg: categoryColor,
@@ -208,8 +223,8 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Mute/Unmute toggle when active slide is a YouTube or direct video */}
-            {parsedVideo && parsedVideo.type !== 'gdrive' && (
+            {/* Mute/Unmute toggle when active slide video supports audio toggle */}
+            {parsedVideo && parsedVideo.supportsMuteToggle && (
               <button
                 type="button"
                 onClick={() => setIsMuted((prev) => !prev)}
@@ -251,29 +266,35 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
         <div
           className="relative w-full max-w-[1000px] h-[300px] sm:h-[420px] md:h-[500px] mx-auto rounded-lg overflow-hidden border border-[#6B1420] shadow-2xl bg-[#1E0307] group select-none"
         >
-          {/* Slide Media: Video (YouTube / Google Drive / Direct .mp4) OR Picture (1000 x 500) */}
-          {parsedVideo ? (
+          {/* Slide Media: Video (Local / YouTube / Google Drive / Vimeo / Facebook / TikTok / Direct .mp4 / Any Link) OR Picture (1000 x 500) */}
+          {parsedVideo && !isMissingLocalActiveVideo ? (
             <div className="w-full h-full relative overflow-hidden bg-black">
-              {parsedVideo.type === 'direct' && parsedVideo.directUrl ? (
-                <video
-                  key={`${article.id}-${parsedVideo.directUrl}`}
-                  src={parsedVideo.directUrl}
-                  poster={resolvedImageUrl || undefined}
-                  autoPlay
-                  muted={isMuted}
-                  loop
-                  playsInline
-                  onClick={() => onSelectArticle(article)}
-                  className="w-full h-full object-cover object-center cursor-pointer"
-                />
+              {isDirectPlaybackType(parsedVideo.type) ? (
+                isResolvingActiveVideo || !effectiveDirectVideoUrl ? (
+                  <div className="w-full h-full flex items-center justify-center bg-[#1E0307] text-stone-300 text-xs">
+                    Loading video...
+                  </div>
+                ) : (
+                  <video
+                    key={`${article.id}-${effectiveDirectVideoUrl}`}
+                    src={effectiveDirectVideoUrl}
+                    poster={resolvedImageUrl || undefined}
+                    autoPlay
+                    muted={isMuted}
+                    loop
+                    playsInline
+                    onClick={() => onSelectArticle(article)}
+                    className="w-full h-full object-cover object-center cursor-pointer"
+                  />
+                )
               ) : (
                 <iframe
                   key={`${article.id}-${parsedVideo.type}-${isMuted ? 'muted' : 'sound'}-${parsedVideo.embedUrl}`}
                   src={
-                    parsedVideo.type === 'youtube'
+                    parsedVideo.supportsMuteToggle
                       ? isMuted
-                        ? parsedVideo.mutedEmbedUrl
-                        : parsedVideo.unmutedEmbedUrl
+                        ? parsedVideo.mutedEmbedUrl || parsedVideo.embedUrl
+                        : parsedVideo.unmutedEmbedUrl || parsedVideo.embedUrl
                       : parsedVideo.embedUrl
                   }
                   title={article.title}

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bookmark, Heart, ArrowUpRight, Clock } from 'lucide-react';
+import { Bookmark, Heart, ArrowUpRight, Clock, Film } from 'lucide-react';
 import { Article, StudentAuthorProfile } from '../types';
 import { EditorialArtwork } from './EditorialArtwork';
 import { AuthorProfile } from './AuthorProfile';
@@ -40,6 +40,12 @@ export const StoryCard: React.FC<StoryCardProps> = ({
           {article.featured && !article.leadStory && (
             <div className="absolute top-2 left-2 bg-[#4A0E17]/90 text-white text-[10px] font-semibold tracking-wider uppercase px-2 py-0.5 rounded backdrop-blur-xs">
               Special Feature
+            </div>
+          )}
+          {article.videoUrl && (
+            <div className="absolute bottom-2 right-2 inline-flex items-center gap-1 bg-[#4A0E17]/95 text-[#F3C562] text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded border border-[#D4AF37]/60 shadow-sm">
+              <Film className="w-3 h-3" />
+              <span>Video</span>
             </div>
           )}
         </div>

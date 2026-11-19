@@ -13,12 +13,16 @@ import {
   Volume2,
   VolumeX,
   MessageSquare,
+  Film,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { Article, StudentAuthorProfile } from '../types';
 import { EditorialArtwork } from './EditorialArtwork';
 import { InkspirerLogo } from './InkspirerLogo';
 import { AuthorProfile } from './AuthorProfile';
 import { ArticleComments } from './ArticleComments';
+import { parseVideoUrl, isDirectPlaybackType } from '../utils/videoUrl';
+import { useResolvedVideoUrl } from '../utils/localVideoStore';
 
 interface ArticleReaderModalProps {
   article: Article | null;
@@ -64,13 +68,21 @@ export const ArticleReaderModal: React.FC<ArticleReaderModalProps> = ({
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [readingProgress, setReadingProgress] = useState(0);
   const [commentCount, setCommentCount] = useState(0);
+  const [heroMediaMode, setHeroMediaMode] = useState<'video' | 'photo'>('video');
   const outerContainerRef = useRef<HTMLDivElement>(null);
   const articleBodyRef = useRef<HTMLDivElement>(null);
   const commentsSectionRef = useRef<HTMLDivElement>(null);
 
+  const {
+    resolvedUrl: resolvedArticleVideoUrl,
+    isResolving: isResolvingArticleVideo,
+    isMissingLocal: isMissingLocalArticleVideo,
+  } = useResolvedVideoUrl(article?.videoUrl);
+
   // Reset or restore reading progress and scroll position when opening an article
   useEffect(() => {
     if (!article) return;
+    setHeroMediaMode(article.videoUrl ? 'video' : 'photo');
     setReadingProgress(savedProgress > 0 && savedProgress < 100 ? savedProgress : 0);
     if (articleBodyRef.current) {
       articleBodyRef.current.scrollTop = 0;
@@ -477,20 +489,97 @@ export const ArticleReaderModal: React.FC<ArticleReaderModalProps> = ({
             </div>
           </div>
 
-          {/* Editorial Artwork Hero */}
-          <div className="mb-8 rounded border border-stone-200 overflow-hidden shadow-xs">
-            <EditorialArtwork
-              category={article.category}
-              customImageUrl={article.imageUrl}
-              className="w-full h-64 sm:h-80"
-              variant="lead"
-            />
-            {article.imageCaption && (
-              <div className="bg-white p-3 border-t border-stone-100 text-xs font-serif italic text-stone-600">
-                {article.imageCaption}
+          {/* Editorial Hero Media (Story Video Player or Editorial Artwork) */}
+          {(() => {
+            const parsedHeroVideo = parseVideoUrl(resolvedArticleVideoUrl || article.videoUrl);
+            const hasPlayableVideo = Boolean(parsedHeroVideo && !isMissingLocalArticleVideo);
+            const showVideo = hasPlayableVideo && heroMediaMode === 'video';
+            const directVideoSrc =
+              parsedHeroVideo && isDirectPlaybackType(parsedHeroVideo.type)
+                ? resolvedArticleVideoUrl || parsedHeroVideo.directUrl
+                : undefined;
+
+            return (
+              <div className="mb-8 rounded border border-stone-200 overflow-hidden shadow-xs bg-white">
+                {hasPlayableVideo && (
+                  <div className="flex items-center justify-between px-3.5 py-2 bg-[#2B060B] text-white border-b border-[#4A0E17] text-xs">
+                    <div className="flex items-center gap-2 font-semibold text-[#F3C562]">
+                      <Film className="w-3.5 h-3.5" />
+                      <span>{parsedHeroVideo?.label || 'Story Video'}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setHeroMediaMode('video')}
+                        className={`px-2.5 py-1 rounded text-[11px] font-semibold inline-flex items-center gap-1 transition-colors cursor-pointer ${
+                          heroMediaMode === 'video'
+                            ? 'bg-[#D4AF37] text-[#2A050B]'
+                            : 'bg-[#4A0E17] text-stone-200 hover:text-white'
+                        }`}
+                      >
+                        <Film className="w-3 h-3" />
+                        <span>Video</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setHeroMediaMode('photo')}
+                        className={`px-2.5 py-1 rounded text-[11px] font-semibold inline-flex items-center gap-1 transition-colors cursor-pointer ${
+                          heroMediaMode === 'photo'
+                            ? 'bg-[#D4AF37] text-[#2A050B]'
+                            : 'bg-[#4A0E17] text-stone-200 hover:text-white'
+                        }`}
+                      >
+                        <ImageIcon className="w-3 h-3" />
+                        <span>Cover</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {showVideo && parsedHeroVideo ? (
+                  <div className="w-full aspect-video bg-black relative">
+                    {isDirectPlaybackType(parsedHeroVideo.type) ? (
+                      isResolvingArticleVideo || !directVideoSrc ? (
+                        <div className="w-full h-full flex items-center justify-center text-stone-300 text-xs">
+                          Loading video...
+                        </div>
+                      ) : (
+                        <video
+                          key={`${article.id}-${directVideoSrc}`}
+                          src={directVideoSrc}
+                          controls
+                          playsInline
+                          className="w-full h-full object-contain bg-black"
+                        />
+                      )
+                    ) : (
+                      <iframe
+                        key={`${article.id}-${parsedHeroVideo.embedUrl}`}
+                        src={parsedHeroVideo.unmutedEmbedUrl || parsedHeroVideo.embedUrl}
+                        title={article.title}
+                        className="w-full h-full border-0"
+                        allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+                        allowFullScreen
+                      />
+                    )}
+                  </div>
+                ) : (
+                  <EditorialArtwork
+                    category={article.category}
+                    customImageUrl={article.imageUrl}
+                    className="w-full h-64 sm:h-80"
+                    variant="lead"
+                  />
+                )}
+
+                {article.imageCaption && (
+                  <div className="bg-white p-3 border-t border-stone-100 text-xs font-serif italic text-stone-600">
+                    {article.imageCaption}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            );
+          })()}
 
           {/* Pull Quote Highlight */}
           {article.pullQuote && (

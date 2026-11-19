@@ -64,10 +64,11 @@ import {
 } from '../types';
 import { downloadSubmissionTextFile } from '../utils/exporter';
 import { normalizeImageUrl, handleImageErrorWithDriveFallback } from '../utils/imageUrl';
-import { parseVideoUrl } from '../utils/videoUrl';
+import { getSampleVideoForCategory } from '../utils/videoUrl';
 import { useAuth } from '../context/AuthContext';
 import { AuthorBioManager } from './AuthorBioManager';
 import { InkspirerLogo } from './InkspirerLogo';
+import { VideoAttachmentField } from './VideoAttachmentField';
 
 // Curated preset palettes for categories
 const COLOR_PRESETS = [
@@ -361,6 +362,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
   const [composerPullQuote, setComposerPullQuote] = useState('');
   const [composerCaption, setComposerCaption] = useState('');
   const [composerImageUrl, setComposerImageUrl] = useState('');
+  const [composerVideoUrl, setComposerVideoUrl] = useState('');
   const [composerContent, setComposerContent] = useState('');
 
   // Announcement composer state
@@ -393,6 +395,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
   const [editPullQuote, setEditPullQuote] = useState('');
   const [editCaption, setEditCaption] = useState('');
   const [editImageUrl, setEditImageUrl] = useState('');
+  const [editVideoUrl, setEditVideoUrl] = useState('');
   const [editLeadStory, setEditLeadStory] = useState(false);
   const [editFeatured, setEditFeatured] = useState(false);
   const [articleCategoryFilter, setArticleCategoryFilter] = useState<Category | 'All'>('All');
@@ -1302,6 +1305,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
     setEditPullQuote(art.pullQuote || '');
     setEditCaption(art.imageCaption || '');
     setEditImageUrl(art.imageUrl || '');
+    setEditVideoUrl(art.videoUrl || '');
     setEditLeadStory(!!art.leadStory);
     setEditFeatured(!!art.featured);
   };
@@ -1360,6 +1364,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
       pullQuote: editPullQuote.trim() || undefined,
       imageCaption: editCaption.trim() || undefined,
       imageUrl: normalizeImageUrl(editImageUrl) || undefined,
+      videoUrl: editVideoUrl.trim() || undefined,
       leadStory: editLeadStory,
       featured: editFeatured,
       categoryTheme: catTheme,
@@ -1430,10 +1435,11 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
     );
     setComposerPullQuote('“Our young writers proved that responsible, truth-centered campus journalism thrives here at Barobo National High School.”');
     setComposerCaption('The Inkspirer editorial delegation celebrates after the DSPC awarding ceremonies.');
+    setComposerVideoUrl(getSampleVideoForCategory('News').url);
     setComposerLeadStory(true);
     setComposerFeatured(true);
     setComposerError('');
-    showToast('Loaded sample article into Story Composer — click Publish to post live!');
+    showToast('Loaded sample article with example video into Story Composer — click Publish to post live!');
   };
 
   const handleApproveAndPublish = (sub: StorySubmission) => {
@@ -1499,6 +1505,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
       authorMotto: matchedProfile?.journalismMotto,
       authorAccolades: matchedProfile?.accolades,
       imageUrl: normalizeImageUrl(composerImageUrl) || undefined,
+      videoUrl: composerVideoUrl.trim() || undefined,
       date: new Date().toLocaleDateString('en-US', {
         month: 'long',
         day: 'numeric',
@@ -1541,6 +1548,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
     setComposerPullQuote('');
     setComposerCaption('');
     setComposerImageUrl('');
+    setComposerVideoUrl('');
     setComposerLeadStory(false);
     setComposerFeatured(false);
     setActiveTab('articles');
@@ -2796,6 +2804,15 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                       )}
                     </div>
 
+                    {/* Video Attachment (Local file upload, Google Drive, YouTube, or any link) */}
+                    <VideoAttachmentField
+                      value={composerVideoUrl}
+                      onChange={setComposerVideoUrl}
+                      category={composerCategory}
+                      label="Attach Story Video (Shows on 1000 × 500 Sliding Pictures & Article Reader)"
+                      onStatusMessage={showToast}
+                    />
+
                     {/* Publish Action Button */}
                     <div className="flex justify-end gap-3 pt-3 border-t border-stone-200">
                       <button
@@ -3331,6 +3348,15 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                               </div>
                             )}
                           </div>
+
+                          {/* VIDEO UPLOAD & MANAGEMENT */}
+                          <VideoAttachmentField
+                            value={editVideoUrl}
+                            onChange={setEditVideoUrl}
+                            category={editCategory}
+                            label="Upload or Replace Story Video (Local File, Google Drive, YouTube, or Any Link)"
+                            onStatusMessage={showToast}
+                          />
 
                           {/* Action Buttons */}
                           <div className="flex justify-end gap-2 pt-3 border-t border-stone-200">
@@ -6522,7 +6548,6 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
 
         {/* Dedicated Upload 1000x500 Category Slide Photo / Video Modal inside Editorial Desk */}
         {isUploadSlideModalOpen && (() => {
-          const parsedSlidePreviewVideo = parseVideoUrl(slideModalVideoUrl);
           const selectedPostTitle =
             articles.find((a) => a.id === slideModalPostId)?.title || '';
           return (
@@ -6663,7 +6688,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                           }`}
                         >
                           <Film className="w-3.5 h-3.5" />
-                          <span>Slide Video (YouTube / Drive / .mp4)</span>
+                          <span>Slide Video (Local / Link)</span>
                         </button>
                       </div>
 
@@ -6716,66 +6741,15 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                           )}
                         </div>
                       ) : (
-                        <div className="space-y-3 pt-1">
-                          <div>
-                            <div className="relative">
-                              <Film className="w-3.5 h-3.5 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                              <input
-                                type="text"
-                                value={slideModalVideoUrl}
-                                onChange={(e) => setSlideModalVideoUrl(e.target.value)}
-                                placeholder="Paste YouTube URL, Google Drive video link, or .mp4 URL..."
-                                className="w-full pl-8 pr-16 py-2 rounded border border-stone-300 bg-white text-stone-900 focus:outline-none focus:ring-2 focus:ring-[#4A0E17] focus:border-[#4A0E17]"
-                              />
-                              {slideModalVideoUrl && (
-                                <button
-                                  type="button"
-                                  onClick={() => setSlideModalVideoUrl('')}
-                                  className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-rose-600 hover:text-rose-800 px-1.5 py-0.5 rounded bg-rose-50 cursor-pointer"
-                                >
-                                  Clear
-                                </button>
-                              )}
-                            </div>
-                            <p className="text-[11px] text-stone-500 mt-1.5 leading-relaxed">
-                              Supports <strong>YouTube</strong> (watch, shorts, youtu.be),{' '}
-                              <strong>Google Drive</strong> (set sharing to <em>Anyone with the link</em>), and direct{' '}
-                              <strong>.mp4 / .webm</strong> video URLs. Automatically syncs to Preview & Live!
-                            </p>
-                          </div>
-
-                          {/* Live 1000x500 (2:1) Video Preview */}
-                          {parsedSlidePreviewVideo && (
-                            <div className="space-y-1.5">
-                              <div className="flex items-center justify-between text-[11px]">
-                                <span className="inline-flex items-center gap-1.5 font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
-                                  <CheckCircle2 className="w-3 h-3" />
-                                  <span>Detected: {parsedSlidePreviewVideo.label}</span>
-                                </span>
-                                <span className="text-stone-500">1000 × 500 Preview</span>
-                              </div>
-                              <div className="rounded-lg overflow-hidden border border-stone-300 bg-black relative aspect-[2/1] max-h-56 w-full">
-                                {parsedSlidePreviewVideo.type === 'direct' &&
-                                parsedSlidePreviewVideo.directUrl ? (
-                                  <video
-                                    src={parsedSlidePreviewVideo.directUrl}
-                                    controls
-                                    muted
-                                    playsInline
-                                    className="w-full h-full object-cover"
-                                  />
-                                ) : (
-                                  <iframe
-                                    src={parsedSlidePreviewVideo.mutedEmbedUrl || parsedSlidePreviewVideo.embedUrl}
-                                    title="Slide Video Preview"
-                                    className="w-full h-full border-0"
-                                    allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
-                                    allowFullScreen
-                                  />
-                                )}
-                              </div>
-                            </div>
-                          )}
+                        <div className="pt-1">
+                          <VideoAttachmentField
+                            value={slideModalVideoUrl}
+                            onChange={setSlideModalVideoUrl}
+                            category={slideModalCategory}
+                            compact
+                            previewAspectClass="aspect-[2/1] max-h-56"
+                            onStatusMessage={showToast}
+                          />
                         </div>
                       )}
                     </div>

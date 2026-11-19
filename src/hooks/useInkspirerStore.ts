@@ -29,6 +29,7 @@ import {
   onSnapshot,
 } from 'firebase/firestore';
 import { db, OperationType, buildFirestoreErrorInfo } from '../lib/firebase';
+import { DEFAULT_SAMPLE_ARTICLE_VIDEOS } from '../utils/videoUrl';
 
 const STORAGE_KEYS = {
   ARTICLES: 'the_inkspirer_articles_v1',
@@ -44,6 +45,7 @@ const STORAGE_KEYS = {
   ACTIVE_ADVISER: 'the_inkspirer_active_adviser_v1',
   HANDOVER_LOG: 'the_inkspirer_adviser_handover_log_v1',
   AUTO_SYNC: 'the_inkspirer_auto_sync_v1',
+  SAMPLE_VIDEOS_SEEDED: 'the_inkspirer_sample_videos_seeded_v1',
 };
 
 const DEFAULT_EDITION_CONFIG: PublicationEditionConfig = {
@@ -200,6 +202,15 @@ async function prepareFirestorePayload(
     if (!cleaned.role) cleaned.role = 'Student Journalist';
   }
 
+  // Prevent oversized inline data:video/ strings from breaking Firestore's 1 MiB document limit
+  if (
+    typeof cleaned.videoUrl === 'string' &&
+    cleaned.videoUrl.startsWith('data:video/') &&
+    cleaned.videoUrl.length > 650000
+  ) {
+    delete cleaned.videoUrl;
+  }
+
   // Ensure embedded data URI images fit safely within Firestore's 1 MiB document limit
   try {
     let serialized = JSON.stringify(cleaned);
@@ -267,11 +278,17 @@ export function useInkspirerStore() {
       const stored = localStorage.getItem(STORAGE_KEYS.ARTICLES);
       if (!stored) return INITIAL_ARTICLES;
       const parsed: Article[] = JSON.parse(stored);
-      return sortArticlesNewestFirst(
+      const alreadySeededSampleVideos =
+        localStorage.getItem(STORAGE_KEYS.SAMPLE_VIDEOS_SEEDED) === 'true';
+      const hydrated = sortArticlesNewestFirst(
         parsed.map((item) => {
           const initialMatch = INITIAL_ARTICLES.find((a) => a.id === item.id);
+          const defaultSampleVideo = !alreadySeededSampleVideos
+            ? DEFAULT_SAMPLE_ARTICLE_VIDEOS[item.id]
+            : undefined;
           return {
             ...item,
+            ...(defaultSampleVideo && !item.videoUrl ? { videoUrl: defaultSampleVideo } : {}),
             authorBio:
               item.authorBio ||
               initialMatch?.authorBio ||
@@ -280,6 +297,10 @@ export function useInkspirerStore() {
           };
         })
       );
+      if (!alreadySeededSampleVideos) {
+        safeLocalStorageSet(STORAGE_KEYS.ARTICLES, hydrated);
+      }
+      return hydrated;
     } catch {
       return INITIAL_ARTICLES;
     }
@@ -548,7 +569,31 @@ export function useInkspirerStore() {
         if (!isMounted) return;
         if (!snap.empty) {
           isCloudInitialized = true;
-          const cloudArts = snap.docs.map((d) => d.data() as Article);
+          const cloudArtsRaw = snap.docs.map((d) => d.data() as Article);
+          const alreadySeededSampleVideos =
+            localStorage.getItem(STORAGE_KEYS.SAMPLE_VIDEOS_SEEDED) === 'true';
+          const articlesToSeedInCloud: Article[] = [];
+          const cloudArts = cloudArtsRaw.map((art) => {
+            const sampleVideo = !alreadySeededSampleVideos
+              ? DEFAULT_SAMPLE_ARTICLE_VIDEOS[art.id]
+              : undefined;
+            if (sampleVideo && !art.videoUrl) {
+              const seeded = stripUndefined({ ...art, videoUrl: sampleVideo });
+              articlesToSeedInCloud.push(seeded);
+              return seeded;
+            }
+            return art;
+          });
+          if (!alreadySeededSampleVideos) {
+            try {
+              localStorage.setItem(STORAGE_KEYS.SAMPLE_VIDEOS_SEEDED, 'true');
+            } catch {
+              // ignore
+            }
+            articlesToSeedInCloud.forEach((seededArt) => {
+              safeSetDoc('articles', seededArt.id, seededArt);
+            });
+          }
           setArticles((prev) => {
             const cloudIds = new Set(cloudArts.map((a) => a.id));
             const mergedFromCloud = cloudArts.filter((a) => !deletedIdsRef.current.has(a.id));
