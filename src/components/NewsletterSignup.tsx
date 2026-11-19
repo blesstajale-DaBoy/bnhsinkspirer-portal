@@ -128,17 +128,17 @@ export const NewsletterSignup: React.FC = () => {
   ];
 
   return (
-    <div className="bg-[#1A0306] border-b border-[#450C13] py-12 px-6 text-white relative overflow-hidden">
+    <div className="bg-[#1A0306] border-b border-[#450C13] py-10 sm:py-12 px-4 sm:px-6 text-white relative overflow-hidden">
       {/* Background glow decoration */}
       <div className="absolute -top-24 -right-24 w-96 h-96 bg-[#781423]/20 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute -bottom-24 -left-24 w-96 h-96 bg-[#D4AF37]/10 rounded-full blur-3xl pointer-events-none" />
 
       <div className="max-w-7xl mx-auto relative z-10">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 items-center">
           {/* Left Column: Heading & Value Proposition (6 cols) */}
           <div className="lg:col-span-6 space-y-3">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#34070E] border border-[#58111A] text-xs font-semibold text-[#D4AF37]">
-              <BellRing className="w-3.5 h-3.5 text-[#F3C562]" />
+            <div className="inline-flex flex-wrap items-center gap-x-2 gap-y-0.5 px-3 py-1 rounded-full bg-[#34070E] border border-[#58111A] text-xs font-semibold text-[#D4AF37]">
+              <BellRing className="w-3.5 h-3.5 text-[#F3C562] shrink-0" />
               <span>The Inkspirer Monthly Digital Edition</span>
               <span className="text-stone-400">·</span>
               <span className="text-stone-300 font-normal">{subscriberCount} Readers Subscribed</span>
@@ -153,7 +153,7 @@ export const NewsletterSignup: React.FC = () => {
             </p>
 
             {/* Publication promise */}
-            <div className="pt-1 flex items-center gap-4 text-xs text-stone-400">
+            <div className="pt-1 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-stone-400">
               <span className="flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#84CC16]" />
                 Zero Spam
@@ -171,7 +171,7 @@ export const NewsletterSignup: React.FC = () => {
 
           {/* Right Column: Interactive Subscription Form (6 cols) */}
           <div className="lg:col-span-6">
-            <div className="bg-[#2D060B] border border-[#58111A] rounded-xl p-6 sm:p-7 shadow-xl">
+            <div className="bg-[#2D060B] border border-[#58111A] rounded-xl p-4 sm:p-7 shadow-xl">
               {isSubmitted ? (
                 <div className="text-center py-6 space-y-3">
                   <div className="w-12 h-12 rounded-full bg-emerald-950 border border-emerald-500/40 text-emerald-400 mx-auto flex items-center justify-center">
@@ -212,7 +212,7 @@ export const NewsletterSignup: React.FC = () => {
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         placeholder="Enter your email (e.g. name@deped.edu.ph)"
-                        className="w-full pl-9 pr-3 py-2.5 text-xs rounded-lg bg-[#180306] border border-[#58111A] text-white placeholder:text-stone-500 focus:outline-none focus:ring-1 focus:ring-[#D4AF37] focus:border-[#D4AF37] transition-all"
+                        className="w-full pl-9 pr-3 py-2.5 text-sm sm:text-xs rounded-lg bg-[#180306] border border-[#58111A] text-white placeholder:text-stone-500 focus:outline-none focus:ring-1 focus:ring-[#D4AF37] focus:border-[#D4AF37] transition-all"
                       />
                     </div>
 
@@ -220,7 +220,7 @@ export const NewsletterSignup: React.FC = () => {
                       <select
                         value={role}
                         onChange={(e) => setRole(e.target.value as NewsletterSubscriber['role'])}
-                        className="w-full px-3 py-2.5 text-xs rounded-lg bg-[#180306] border border-[#58111A] text-stone-200 focus:outline-none focus:ring-1 focus:ring-[#D4AF37] font-medium"
+                        className="w-full px-3 py-2.5 text-sm sm:text-xs rounded-lg bg-[#180306] border border-[#58111A] text-stone-200 focus:outline-none focus:ring-1 focus:ring-[#D4AF37] font-medium"
                       >
                         <option value="Student">I am a Student</option>
                         <option value="Parent / Guardian">Parent / Guardian</option>
@@ -244,7 +244,7 @@ export const NewsletterSignup: React.FC = () => {
                             type="button"
                             key={beat.id}
                             onClick={() => toggleBeat(beat.id)}
-                            className={`px-2.5 py-1 text-[11px] font-semibold rounded-md border transition-all flex items-center gap-1.5 ${
+                            className={`px-2.5 py-1.5 min-h-[34px] text-[11px] font-semibold rounded-md border transition-all flex items-center gap-1.5 cursor-pointer ${
                               isSelected
                                 ? beat.borderActive
                                 : 'border-[#450C13] bg-[#1A0306] text-stone-400 hover:text-stone-200'
@@ -266,7 +266,7 @@ export const NewsletterSignup: React.FC = () => {
 
                     <button
                       type="submit"
-                      className="w-full sm:w-auto px-5 py-2.5 text-xs font-bold text-stone-950 bg-[#D4AF37] hover:bg-[#F3C562] rounded-lg transition-all flex items-center justify-center gap-2 shadow-lg shrink-0 cursor-pointer"
+                      className="w-full sm:w-auto min-h-[44px] px-5 py-2.5 text-xs font-bold text-stone-950 bg-[#D4AF37] hover:bg-[#F3C562] rounded-lg transition-all flex items-center justify-center gap-2 shadow-lg shrink-0 cursor-pointer"
                     >
                       <span>Subscribe to Highlights</span>
                       <Send className="w-3.5 h-3.5" />

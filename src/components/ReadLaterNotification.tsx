@@ -133,16 +133,24 @@ export const ReadLaterNotification: React.FC<ReadLaterNotificationProps> = ({
 
       if (hasPendingFromStorage) {
         setIsReturnVisitPrompt(true);
-        setIsExpanded(true);
+        if (typeof window !== 'undefined' && window.innerWidth >= 640) {
+          setIsExpanded(true);
+        }
       }
     } catch (e) {
       console.warn('Read-later visit check warning:', e);
     }
   }, []);
 
-  // Automatically reveal the notification card when a user bookmarks their first unfinished story
+  // Automatically reveal the notification card on tablet/desktop when a user bookmarks their first unfinished story
   useEffect(() => {
-    if (unfinishedItems.length > 0 && !isDismissedForSession && !isExpanded) {
+    if (
+      unfinishedItems.length > 0 &&
+      !isDismissedForSession &&
+      !isExpanded &&
+      typeof window !== 'undefined' &&
+      window.innerWidth >= 640
+    ) {
       setIsExpanded(true);
     }
   }, [unfinishedItems.length]);
@@ -173,7 +181,7 @@ export const ReadLaterNotification: React.FC<ReadLaterNotificationProps> = ({
 
   return (
     <div
-      className="fixed bottom-4 right-4 z-40 max-w-md w-[calc(100vw-2rem)] sm:w-[26rem] font-sans"
+      className="fixed bottom-3 right-3 left-3 sm:left-auto sm:bottom-4 sm:right-4 z-40 sm:max-w-md sm:w-[26rem] pb-safe font-sans pointer-events-none"
       role="region"
       aria-label="Read-Later Catch-Up Notification"
     >
@@ -185,33 +193,33 @@ export const ReadLaterNotification: React.FC<ReadLaterNotificationProps> = ({
               setIsExpanded(true);
               setIsDismissedForSession(false);
             }}
-            className="group flex items-center gap-3 bg-[#34070E] hover:bg-[#4A0E17] text-white px-4 py-3 rounded-xl shadow-2xl border border-[#D4AF37]/50 transition-all duration-200 cursor-pointer"
+            className="pointer-events-auto group flex items-center gap-2.5 sm:gap-3 bg-[#34070E] hover:bg-[#4A0E17] text-white px-3.5 sm:px-4 py-2.5 sm:py-3 rounded-xl shadow-2xl border border-[#D4AF37]/50 transition-all duration-200 cursor-pointer max-w-full"
           >
-            <div className="relative flex items-center justify-center w-8 h-8 rounded-lg bg-[#D4AF37]/20 border border-[#D4AF37]/50 text-[#F3C562]">
+            <div className="relative flex items-center justify-center w-8 h-8 rounded-lg bg-[#D4AF37]/20 border border-[#D4AF37]/50 text-[#F3C562] shrink-0">
               <Bookmark className="w-4 h-4 fill-[#F3C562]" />
               <span className="absolute -top-1.5 -right-1.5 min-w-4 h-4 px-1 rounded-full bg-[#D4AF37] text-[#0B2545] text-[10px] font-extrabold flex items-center justify-center">
                 {unfinishedItems.length}
               </span>
             </div>
-            <div className="text-left">
+            <div className="text-left min-w-0">
               <div className="flex items-center gap-1.5">
                 <span className="text-xs font-bold uppercase tracking-wider text-[#F3C562]">
-                  Read-Later Catch-Up
+                  Read-Later
                 </span>
                 <span className="text-[10px] text-stone-300 font-mono">
-                  · ~{totalRemainingMinutes}m left
+                  · ~{totalRemainingMinutes}m
                 </span>
               </div>
-              <p className="text-[11px] text-stone-200 truncate max-w-[14rem]">
+              <p className="text-[11px] text-stone-200 truncate max-w-[11rem] sm:max-w-[14rem]">
                 {unfinishedItems[0].article.title}
               </p>
             </div>
-            <ChevronUp className="w-4 h-4 text-[#F3C562] group-hover:-translate-y-0.5 transition-transform" />
+            <ChevronUp className="w-4 h-4 text-[#F3C562] group-hover:-translate-y-0.5 transition-transform shrink-0" />
           </button>
         </div>
       ) : (
         /* Expanded Read-Later Notification Card */
-        <div className="bg-[#FBF9F5] text-[#1C1917] rounded-xl shadow-2xl border-2 border-[#D4AF37]/70 overflow-hidden flex flex-col max-h-[82vh]">
+        <div className="pointer-events-auto bg-[#FBF9F5] text-[#1C1917] rounded-xl shadow-2xl border-2 border-[#D4AF37]/70 overflow-hidden flex flex-col max-h-[78dvh]">
           {/* Top Maroon & Gold Editorial Banner */}
           <div className="bg-linear-to-r from-[#34070E] via-[#4A0E17] to-[#0B2545] text-white px-4 py-3.5 border-b border-[#D4AF37]/40">
             <div className="flex items-start justify-between gap-2">

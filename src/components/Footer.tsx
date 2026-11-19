@@ -27,10 +27,10 @@ export const Footer: React.FC<FooterProps> = ({
       <NewsletterSignup />
 
       {/* Main Footer Links */}
-      <div className="max-w-7xl mx-auto pt-14 pb-10 px-6">
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-10 pb-12 border-b border-white/10">
+      <div className="max-w-7xl mx-auto pt-10 sm:pt-14 pb-8 sm:pb-10 px-4 sm:px-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-8 lg:gap-10 pb-10 sm:pb-12 border-b border-white/10">
           {/* Col 1: Brand & School Lockup (5 cols) */}
-          <div className="md:col-span-5 space-y-3">
+          <div className="sm:col-span-2 lg:col-span-5 space-y-3">
             <div className="flex items-center gap-3 mb-2">
               <img
                 src="/assets/aistudio/BNHS_LOGO_29bb7e4c.jpg"
@@ -58,7 +58,7 @@ export const Footer: React.FC<FooterProps> = ({
           </div>
 
           {/* Col 2: Publication Desks / Menus with requested distinct colors (3 cols) */}
-          <div className="md:col-span-3 space-y-3">
+          <div className="sm:col-span-1 lg:col-span-3 space-y-3">
             <div className="text-xs font-bold uppercase tracking-wider text-white">
               Publication Menus
             </div>
@@ -106,7 +106,7 @@ export const Footer: React.FC<FooterProps> = ({
           </div>
 
           {/* Col 3: Student Tools & Portal Links (4 cols) */}
-          <div className="md:col-span-4 space-y-3">
+          <div className="sm:col-span-1 lg:col-span-4 space-y-3">
             <div className="text-xs font-bold uppercase tracking-wider text-white">
               Student Writers & Management
             </div>
@@ -116,35 +116,35 @@ export const Footer: React.FC<FooterProps> = ({
             <div className="flex flex-col gap-2 pt-2">
               <button
                 onClick={onOpenSubmit}
-                className="w-full text-left px-3 py-2 text-xs font-medium bg-white/5 hover:bg-white/10 rounded transition-colors flex items-center justify-between text-white"
+                className="w-full min-h-[42px] text-left px-3 py-2 text-xs font-medium bg-white/5 hover:bg-white/10 rounded transition-colors flex items-center justify-between gap-2 text-white cursor-pointer"
               >
                 <span className="flex items-center gap-2">
-                  <Feather className="w-3.5 h-3.5 text-[#D4AF37]" />
+                  <Feather className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" />
                   <span>Submit a Story Proposal</span>
                 </span>
-                <span className="text-[11px] text-stone-400">Export .txt</span>
+                <span className="text-[11px] text-stone-400 shrink-0">Export .txt</span>
               </button>
 
               <button
                 onClick={onOpenEditorialDesk}
-                className="w-full text-left px-3 py-2 text-xs font-medium bg-white/5 hover:bg-white/10 rounded transition-colors flex items-center justify-between text-white"
+                className="w-full min-h-[42px] text-left px-3 py-2 text-xs font-medium bg-white/5 hover:bg-white/10 rounded transition-colors flex items-center justify-between gap-2 text-white cursor-pointer"
               >
                 <span className="flex items-center gap-2">
-                  <BookOpen className="w-3.5 h-3.5 text-[#D4AF37]" />
+                  <BookOpen className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" />
                   <span>Editorial Desk & Adviser Portal</span>
                 </span>
-                <span className="text-[11px] text-[#D4AF37]">Manage</span>
+                <span className="text-[11px] text-[#D4AF37] shrink-0">Manage</span>
               </button>
             </div>
           </div>
         </div>
 
         {/* Bottom Credits Strip with Automatic Dynamic Year */}
-        <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-stone-400 text-center sm:text-left">
+        <div className="pt-6 sm:pt-8 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4 text-xs text-stone-400 text-center sm:text-left">
           <div>
             © {new Date().getFullYear()} The Inkspirer · Barobo National High School. All rights reserved.
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center justify-center sm:justify-end gap-x-3 gap-y-1">
             <span>Poblacion, Barobo, Surigao del Sur 8309</span>
             <span aria-hidden="true" className="text-stone-600">·</span>
             <span>Region XIII Caraga</span>

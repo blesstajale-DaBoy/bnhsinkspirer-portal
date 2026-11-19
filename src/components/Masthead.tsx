@@ -75,29 +75,29 @@ export const Masthead: React.FC<MastheadProps> = ({
   return (
     <div className="border-b border-[#58111A] bg-[#4A0E17] text-white">
       {/* Upper Publication Dateline & Accreditation */}
-      <div className="border-b border-[#58111A] bg-[#3B0910] px-6 py-2">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3 text-xs text-stone-300">
-          <div className="flex items-center gap-2">
+      <div className="border-b border-[#58111A] bg-[#3B0910] px-4 sm:px-6 py-2">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:flex-wrap items-center justify-between gap-1.5 sm:gap-3 text-[11px] sm:text-xs text-stone-300 text-center sm:text-left">
+          <div className="flex flex-wrap items-center justify-center sm:justify-start gap-x-2 gap-y-0.5">
             <span className="font-semibold text-[#F3C562] tracking-wide">
               REPUBLIC OF THE PHILIPPINES
             </span>
             <span aria-hidden="true" className="text-stone-500">·</span>
             <span>Department of Education</span>
-            <span aria-hidden="true" className="text-stone-500">·</span>
-            <span>Region XIII Caraga</span>
-            <span aria-hidden="true" className="text-stone-500">·</span>
-            <span>Division of Surigao del Sur</span>
+            <span aria-hidden="true" className="hidden sm:inline text-stone-500">·</span>
+            <span className="hidden sm:inline">Region XIII Caraga</span>
+            <span aria-hidden="true" className="hidden md:inline text-stone-500">·</span>
+            <span className="hidden md:inline">Division of Surigao del Sur</span>
           </div>
 
-          <div className="flex flex-wrap items-center gap-4 text-stone-300">
+          <div className="flex flex-wrap items-center justify-center sm:justify-end gap-x-3 gap-y-1 text-stone-300">
             <span>{currentVolumeIssue}</span>
             <span aria-hidden="true" className="text-stone-500">·</span>
             <span>{currentAcademicYear}</span>
-            <span aria-hidden="true" className="text-stone-500">·</span>
+            <span aria-hidden="true" className="hidden sm:inline text-stone-500">·</span>
             <button
               type="button"
               onClick={() => window.print()}
-              className="hover:text-white inline-flex items-center gap-1 transition-colors text-stone-300 cursor-pointer"
+              className="hidden sm:inline-flex hover:text-white items-center gap-1 transition-colors text-stone-300 cursor-pointer"
               title="Print newspaper edition"
             >
               <Printer className="w-3.5 h-3.5 text-[#D4AF37]" />
@@ -108,20 +108,21 @@ export const Masthead: React.FC<MastheadProps> = ({
       </div>
 
       {/* Hero Masthead Presentation */}
-      <div className="max-w-7xl mx-auto px-6 py-8 sm:py-12 text-center relative">
-        {/* Left Side Aligned with BNHS Logo: Philippine Standard Time (Month, Date, Year) & Barobo Weather Forecast */}
-        <div className="hidden md:block absolute top-4 left-4 lg:top-6 lg:left-8 z-30">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-10 lg:py-12 text-center relative">
+        {/* Desktop Left Side: Philippine Standard Time & Barobo Weather Forecast */}
+        <div className="hidden lg:block absolute top-6 left-8 z-30">
           <PhilippineTimeWeatherWidget className="origin-top-left" />
         </div>
 
-        {/* Facebook Page QR Code pinned at the top right side */}
-        <div className="absolute top-2 right-3 sm:top-4 sm:right-6 md:top-6 md:right-8 z-30">
-          <FacebookQrCode size={62} className="scale-85 sm:scale-100 origin-top-right shadow-2xl" />
+        {/* Desktop Right Side: Facebook Page QR Code */}
+        <div className="hidden lg:block absolute top-6 right-8 z-30">
+          <FacebookQrCode size={64} className="origin-top-right shadow-2xl" />
         </div>
 
-        {/* Mobile/Tablet View for PST & Barobo Weather Widget */}
-        <div className="flex md:hidden justify-start mb-4">
-          <PhilippineTimeWeatherWidget className="w-60 max-w-[72%]" />
+        {/* Mobile & Tablet Utility Row: Weather Widget + Facebook QR cleanly side-by-side (zero overlap) */}
+        <div className="flex lg:hidden items-start justify-between gap-2.5 sm:gap-4 mb-5 max-w-2xl mx-auto">
+          <PhilippineTimeWeatherWidget className="flex-1 min-w-0 !w-auto max-w-[270px] sm:max-w-[290px]" />
+          <FacebookQrCode size={56} className="shrink-0 shadow-xl" />
         </div>
 
         {/* Uploaded Barobo National High School Official Seal */}
@@ -137,10 +138,10 @@ export const Masthead: React.FC<MastheadProps> = ({
         </div>
 
         {/* School Name and Seal Framing */}
-        <div className="inline-flex items-center gap-2 mb-4 text-xs uppercase tracking-[0.25em] font-semibold text-[#F3C562]">
-          <span className="h-px w-8 bg-[#D4AF37]/60" />
+        <div className="inline-flex items-center gap-2 mb-3 sm:mb-4 text-[11px] sm:text-xs uppercase tracking-[0.18em] sm:tracking-[0.25em] font-semibold text-[#F3C562]">
+          <span className="h-px w-5 sm:w-8 bg-[#D4AF37]/60" />
           <span>Barobo National High School</span>
-          <span className="h-px w-8 bg-[#D4AF37]/60" />
+          <span className="h-px w-5 sm:w-8 bg-[#D4AF37]/60" />
         </div>
 
         {/* The Inkspirer Official Publication Emblem Logo above THE INKSPIRER */}
@@ -149,28 +150,31 @@ export const Masthead: React.FC<MastheadProps> = ({
         </div>
 
         {/* Master Newspaper Name */}
-        <h1 className="font-brand text-5xl sm:text-7xl lg:text-8xl font-black tracking-tight text-white mb-3 drop-shadow-sm">
+        <h1
+          className="font-brand text-4xl sm:text-6xl md:text-7xl lg:text-8xl font-black tracking-tight text-white leading-[1.06] mb-3 drop-shadow-sm"
+          style={{ textWrap: 'balance' }}
+        >
           THE INKSPIRER
         </h1>
 
         {/* Tagline & Subtitle */}
-        <div className="space-y-2 mb-8">
-          <p className="text-xs sm:text-sm font-semibold tracking-[0.2em] uppercase text-[#D4AF37]">
+        <div className="space-y-2 mb-6 sm:mb-8">
+          <p className="text-[11px] sm:text-sm font-semibold tracking-[0.16em] sm:tracking-[0.2em] uppercase text-[#D4AF37]">
             THE OFFICIAL DIGITAL NEWSLETTER PORTAL
           </p>
-          <p className="font-serif italic text-xl sm:text-2xl text-stone-100">
+          <p className="font-serif italic text-lg sm:text-2xl text-stone-100">
             {currentMotto}
           </p>
-          <p className="max-w-2xl mx-auto text-sm sm:text-base text-stone-200 leading-relaxed pt-2">
+          <p className="max-w-2xl mx-auto text-sm sm:text-base text-stone-200 leading-relaxed pt-1 sm:pt-2 px-1">
             {currentTaglineDescription}
           </p>
         </div>
 
         {/* Hero Interactive CTAs */}
-        <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+        <div className="grid grid-cols-1 sm:flex sm:flex-wrap items-center justify-center gap-2.5 sm:gap-3 pt-1 max-w-md sm:max-w-none mx-auto">
           <button
             onClick={onScrollToStories}
-            className="px-6 py-2.5 text-sm font-bold text-stone-900 bg-[#D4AF37] hover:bg-[#E5BE4A] rounded transition-all shadow-xs flex items-center gap-2 cursor-pointer"
+            className="w-full sm:w-auto min-h-[44px] px-6 py-2.5 text-sm font-bold text-stone-900 bg-[#D4AF37] hover:bg-[#E5BE4A] rounded transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer"
           >
             <span>Explore Stories</span>
             <span aria-hidden="true">↓</span>
@@ -178,7 +182,7 @@ export const Masthead: React.FC<MastheadProps> = ({
 
           <button
             onClick={onOpenSubmit}
-            className="px-6 py-2.5 text-sm font-medium text-white bg-[#5C1521] border border-[#781B2B] rounded hover:bg-[#6D1B29] transition-all flex items-center gap-2 cursor-pointer"
+            className="w-full sm:w-auto min-h-[44px] px-6 py-2.5 text-sm font-medium text-white bg-[#5C1521] border border-[#781B2B] rounded hover:bg-[#6D1B29] transition-all flex items-center justify-center gap-2 cursor-pointer"
           >
             <Feather className="w-4 h-4 text-[#D4AF37]" />
             <span>Submit a Story</span>
@@ -186,7 +190,7 @@ export const Masthead: React.FC<MastheadProps> = ({
 
           <button
             onClick={onOpenEditorialDesk}
-            className="px-5 py-2.5 text-sm font-bold text-stone-900 bg-[#F3C562] hover:bg-[#E5BE4A] rounded shadow-xs flex items-center gap-2 transition-all border border-[#D4AF37] cursor-pointer"
+            className="w-full sm:w-auto min-h-[44px] px-5 py-2.5 text-sm font-bold text-stone-900 bg-[#F3C562] hover:bg-[#E5BE4A] rounded shadow-xs flex items-center justify-center gap-2 transition-all border border-[#D4AF37] cursor-pointer"
             title="Create, edit, delete, and upload photos for all Publication Categories"
           >
             <ShieldCheck className="w-4 h-4 text-[#4A0E17]" />
@@ -196,7 +200,7 @@ export const Masthead: React.FC<MastheadProps> = ({
           {bookmarksCount > 0 && (
             <button
               onClick={onFilterBookmarks}
-              className={`px-4 py-2.5 text-xs sm:text-sm font-medium rounded border transition-colors flex items-center gap-2 cursor-pointer ${
+              className={`w-full sm:w-auto min-h-[44px] px-4 py-2.5 text-xs sm:text-sm font-medium rounded border transition-colors flex items-center justify-center gap-2 cursor-pointer ${
                 showingBookmarks
                   ? 'bg-amber-400 text-stone-900 border-amber-300 font-semibold'
                   : 'bg-[#3B0910] border-[#58111A] text-stone-200 hover:bg-[#480D15]'
@@ -209,15 +213,15 @@ export const Masthead: React.FC<MastheadProps> = ({
         </div>
 
         {/* Official Newspaper Publication Section Menus Ribbon */}
-        <div className="mt-8 pt-6 border-t border-[#681622]">
-          <div className="text-[11px] font-bold uppercase tracking-[0.22em] text-[#F3C562] mb-3">
+        <div className="mt-7 sm:mt-8 pt-5 sm:pt-6 border-t border-[#681622]">
+          <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#F3C562] mb-3">
             Publication Menus & Editorial Desks
           </div>
-          <div className="flex flex-wrap items-center justify-center gap-2.5">
+          <div className="flex flex-nowrap sm:flex-wrap items-center justify-start sm:justify-center gap-2 sm:gap-2.5 overflow-x-auto scrollbar-none pb-1 sm:pb-0 -mx-1 px-1">
             <button
               type="button"
               onClick={() => handleSelectMenu('All')}
-              className={`px-4 py-2 rounded-md text-xs sm:text-sm font-bold tracking-wide transition-all flex items-center gap-2 border cursor-pointer shadow-xs ${
+              className={`min-h-[40px] px-3.5 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-bold tracking-wide transition-all flex items-center gap-2 border cursor-pointer shadow-xs whitespace-nowrap shrink-0 ${
                 activeCategory === 'All' && !showingBookmarks
                   ? 'bg-[#84CC16] text-[#142304] border-[#A3E635] ring-2 ring-[#A3E635]/30'
                   : 'bg-[#34070E]/90 text-stone-200 border-[#681622] hover:border-[#A3E635]/60 hover:text-white'
@@ -247,7 +251,7 @@ export const Masthead: React.FC<MastheadProps> = ({
                   key={cat.id || cat.name}
                   type="button"
                   onClick={() => handleSelectMenu(cat.name)}
-                  className="px-4 py-2 rounded-md text-xs sm:text-sm font-bold tracking-wide transition-all flex items-center gap-2 border cursor-pointer shadow-xs"
+                  className="min-h-[40px] px-3.5 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-bold tracking-wide transition-all flex items-center gap-2 border cursor-pointer shadow-xs whitespace-nowrap shrink-0"
                   style={
                     isActive
                       ? {
@@ -277,13 +281,13 @@ export const Masthead: React.FC<MastheadProps> = ({
       </div>
 
       {/* Editorial Quality & Trust Line */}
-      <div className="border-t border-[#58111A] bg-[#38080F]/90 py-2.5 px-6">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between text-xs text-stone-300 gap-4">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-[#34D399]" />
+      <div className="border-t border-[#58111A] bg-[#38080F]/90 py-2.5 px-4 sm:px-6">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:flex-wrap items-center justify-between text-[11px] sm:text-xs text-stone-300 gap-2 sm:gap-4 text-center sm:text-left">
+          <div className="flex items-center justify-center sm:justify-start gap-2">
+            <ShieldCheck className="w-4 h-4 text-[#34D399] shrink-0" />
             <span>Regulated by Republic Act No. 7079 (Campus Journalism Act of 1991)</span>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center justify-center sm:justify-end gap-x-3 gap-y-1">
             <span className="text-stone-200 font-medium">{currentCirculation}</span>
             <span aria-hidden="true" className="text-stone-500">·</span>
             <span>{currentIssn}</span>

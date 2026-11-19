@@ -40,24 +40,24 @@ export const LeadStory: React.FC<LeadStoryProps> = ({
 
   return (
     <section className="bg-[#4A0E17] border-b border-[#58111A]">
-      <div className="max-w-7xl mx-auto px-6 py-8 sm:py-12">
-        <div className="bg-[#FFFDF9] border border-[#6B1420]/30 rounded-lg p-6 sm:p-10 shadow-2xl">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-10 lg:py-12">
+        <div className="bg-[#FFFDF9] border border-[#6B1420]/30 rounded-lg p-4 sm:p-8 lg:p-10 shadow-2xl">
           {/* Newspaper lead kicker */}
-          <div className="flex items-center justify-between border-b border-stone-200 pb-2 mb-6 text-xs text-stone-500 font-medium">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-200 pb-2 mb-5 sm:mb-6 text-xs text-stone-500 font-medium">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
               <span className="font-bold tracking-widest uppercase text-[#781423]">
                 Front-Page Lead Story
               </span>
-            <span aria-hidden="true">·</span>
-            <span>{article.issue}</span>
+              <span aria-hidden="true">·</span>
+              <span>{article.issue}</span>
+            </div>
+            <div className="hidden sm:flex items-center gap-2">
+              <span>By The Inkspirer Editorial Board</span>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span>By The Inkspirer Editorial Board</span>
-          </div>
-        </div>
 
-        {/* 2-Column Newspaper Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-stretch">
+          {/* 2-Column Newspaper Layout */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 lg:gap-12 items-stretch">
           {/* Main Headline & Excerpt Column (7 cols) */}
           <div className="lg:col-span-7 flex flex-col justify-between">
             <div>
@@ -75,7 +75,7 @@ export const LeadStory: React.FC<LeadStoryProps> = ({
               {/* Big Editorial Headline */}
               <h2
                 onClick={() => onSelect(article)}
-                className="font-serif text-3xl sm:text-4xl lg:text-5xl font-bold text-stone-900 leading-[1.15] tracking-tight hover:text-[#133E87] transition-colors cursor-pointer mb-4"
+                className="font-serif text-2xl sm:text-4xl lg:text-5xl font-bold text-stone-900 leading-[1.15] tracking-tight hover:text-[#133E87] transition-colors cursor-pointer mb-3 sm:mb-4"
                 style={{ textWrap: 'balance' }}
               >
                 {article.title}
@@ -115,10 +115,10 @@ export const LeadStory: React.FC<LeadStoryProps> = ({
                 />
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
                 <button
                   onClick={(e) => onToggleLike(article.id, e)}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs transition-colors ${
+                  className={`inline-flex items-center gap-1.5 px-3 py-2 min-h-[40px] rounded text-xs transition-colors cursor-pointer ${
                     isLiked
                       ? 'text-rose-600 bg-rose-50 border border-rose-200'
                       : 'text-stone-600 hover:text-stone-900 bg-stone-100 hover:bg-stone-200'
@@ -131,7 +131,7 @@ export const LeadStory: React.FC<LeadStoryProps> = ({
 
                 <button
                   onClick={(e) => onToggleBookmark(article.id, e)}
-                  className={`p-2 rounded text-xs transition-colors ${
+                  className={`p-2 min-w-[40px] min-h-[40px] flex items-center justify-center rounded text-xs transition-colors cursor-pointer ${
                     isBookmarked
                       ? 'text-amber-700 bg-amber-50 border border-amber-200'
                       : 'text-stone-600 hover:text-stone-900 bg-stone-100 hover:bg-stone-200'
@@ -143,7 +143,7 @@ export const LeadStory: React.FC<LeadStoryProps> = ({
 
                 <button
                   onClick={() => onSelect(article)}
-                  className="px-4 py-2 text-xs font-semibold text-white bg-[#4A0E17] rounded hover:bg-[#6B1420] transition-all flex items-center gap-1.5 shadow-2xs"
+                  className="flex-1 sm:flex-none min-h-[40px] px-4 py-2 text-xs font-semibold text-white bg-[#4A0E17] rounded hover:bg-[#6B1420] transition-all flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
                 >
                   <span>Read Full Story</span>
                   <ArrowRight className="w-3.5 h-3.5 text-[#F3C562]" />

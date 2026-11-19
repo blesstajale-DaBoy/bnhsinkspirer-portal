@@ -54,6 +54,7 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
   const [isMuted, setIsMuted] = useState(true);
   const [elapsedMs, setElapsedMs] = useState(0);
   const elapsedMsRef = useRef(0);
+  const touchStartXRef = useRef<number | null>(null);
 
   // Build ordered slides from articles across NEWS, FEATURES, OPINION, SPORTS (and any custom categories)
   // Interleaves the top story of News, Features, Opinion, Sports first (prioritizing posts with uploaded videos or photos),
@@ -262,9 +263,21 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
           </div>
         </div>
 
-        {/* 1000 by 500 Sliding Picture / Video Container */}
+        {/* 1000 by 500 Sliding Picture / Video Container (supports touch swipe on mobile & tablet) */}
         <div
-          className="relative w-full max-w-[1000px] h-[300px] sm:h-[420px] md:h-[500px] mx-auto rounded-lg overflow-hidden border border-[#6B1420] shadow-2xl bg-[#1E0307] group select-none"
+          onTouchStart={(e) => {
+            touchStartXRef.current = e.touches[0]?.clientX ?? null;
+          }}
+          onTouchEnd={(e) => {
+            if (touchStartXRef.current === null || slides.length <= 1) return;
+            const endX = e.changedTouches[0]?.clientX ?? touchStartXRef.current;
+            const deltaX = endX - touchStartXRef.current;
+            touchStartXRef.current = null;
+            if (Math.abs(deltaX) >= 45) {
+              handleGoToSlide(deltaX < 0 ? currentIndex + 1 : currentIndex - 1);
+            }
+          }}
+          className="relative w-full max-w-[1000px] h-[250px] sm:h-[380px] md:h-[460px] lg:h-[500px] mx-auto rounded-lg overflow-hidden border border-[#6B1420] shadow-2xl bg-[#1E0307] group select-none"
         >
           {/* Slide Media: Video (Local / YouTube / Google Drive / Vimeo / Facebook / TikTok / Direct .mp4 / Any Link) OR Picture (1000 x 500) */}
           {parsedVideo && !isMissingLocalActiveVideo ? (
@@ -337,10 +350,10 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
           )}
 
           {/* Top-Left Category Badge, Video Tag & Slide Counter */}
-          <div className="absolute top-4 left-4 right-4 flex items-center justify-between pointer-events-none z-10">
-            <div className="flex flex-wrap items-center gap-2 pointer-events-auto">
+          <div className="absolute top-2.5 sm:top-4 left-2.5 sm:left-4 right-2.5 sm:right-4 flex items-center justify-between gap-2 pointer-events-none z-10">
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 pointer-events-auto">
               <span
-                className="px-3 py-1 rounded text-xs font-extrabold uppercase tracking-wider shadow-md border"
+                className="px-2.5 sm:px-3 py-0.5 sm:py-1 rounded text-[10px] sm:text-xs font-extrabold uppercase tracking-wider shadow-md border"
                 style={{
                   backgroundColor: badgeStyle.bg,
                   color: badgeStyle.text,
@@ -350,17 +363,18 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
                 {article.category}
               </span>
               {parsedVideo && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-[#4A0E17]/90 text-[#F3C562] text-[11px] font-bold uppercase tracking-wider border border-[#D4AF37]/60 shadow-md">
-                  <Film className="w-3 h-3" />
-                  <span>{parsedVideo.label}</span>
+                <span className="inline-flex items-center gap-1 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded bg-[#4A0E17]/90 text-[#F3C562] text-[10px] sm:text-[11px] font-bold uppercase tracking-wider border border-[#D4AF37]/60 shadow-md">
+                  <Film className="w-3 h-3 shrink-0" />
+                  <span className="hidden sm:inline">{parsedVideo.label}</span>
+                  <span className="sm:hidden">Video</span>
                 </span>
               )}
-              <span className="px-2.5 py-1 rounded bg-black/65 backdrop-blur-xs text-[11px] font-medium text-stone-200 border border-white/15">
+              <span className="hidden sm:inline-flex px-2.5 py-1 rounded bg-black/65 backdrop-blur-xs text-[11px] font-medium text-stone-200 border border-white/15">
                 {article.issue} · {article.date}
               </span>
             </div>
 
-            <div className="px-2.5 py-1 rounded bg-black/65 backdrop-blur-xs text-[11px] font-mono text-stone-200 border border-white/15">
+            <div className="px-2 sm:px-2.5 py-0.5 sm:py-1 rounded bg-black/65 backdrop-blur-xs text-[10px] sm:text-[11px] font-mono tabular-nums text-stone-200 border border-white/15 shrink-0">
               {currentIndex + 1} / {slides.length}
             </div>
           </div>
@@ -375,9 +389,9 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
                   handleGoToSlide(currentIndex - 1);
                 }}
                 aria-label="Previous slide"
-                className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 hover:bg-[#4A0E17] text-white border border-white/20 flex items-center justify-center transition-all opacity-85 hover:opacity-100 cursor-pointer shadow-lg z-10"
+                className="absolute left-2 sm:left-3 top-[38%] sm:top-1/2 -translate-y-1/2 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-black/60 hover:bg-[#4A0E17] text-white border border-white/20 flex items-center justify-center transition-all opacity-85 hover:opacity-100 cursor-pointer shadow-lg z-10"
               >
-                <ChevronLeft className="w-5 h-5" />
+                <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
               <button
                 type="button"
@@ -386,20 +400,20 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
                   handleGoToSlide(currentIndex + 1);
                 }}
                 aria-label="Next slide"
-                className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 hover:bg-[#4A0E17] text-white border border-white/20 flex items-center justify-center transition-all opacity-85 hover:opacity-100 cursor-pointer shadow-lg z-10"
+                className="absolute right-2 sm:right-3 top-[38%] sm:top-1/2 -translate-y-1/2 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-black/60 hover:bg-[#4A0E17] text-white border border-white/20 flex items-center justify-center transition-all opacity-85 hover:opacity-100 cursor-pointer shadow-lg z-10"
               >
-                <ChevronRight className="w-5 h-5" />
+                <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
             </>
           )}
 
           {/* Bottom Headline / Title Overlay — Clicking Title Automatically Links to the Post */}
-          <div className="absolute bottom-0 inset-x-0 p-5 sm:p-7 z-10 flex flex-col justify-end pointer-events-none">
+          <div className="absolute bottom-0 inset-x-0 p-3.5 sm:p-6 md:p-7 pb-4 sm:pb-7 z-10 flex flex-col justify-end pointer-events-none">
             <div className="max-w-3xl pointer-events-auto">
-              <div className="flex items-center gap-2 text-xs text-[#F3C562] font-semibold uppercase tracking-wider mb-1.5">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] sm:text-xs text-[#F3C562] font-semibold uppercase tracking-wider mb-1 sm:mb-1.5">
                 <span>By {article.author}</span>
-                <span aria-hidden="true">·</span>
-                <span className="text-stone-300 font-normal">{article.authorRole}</span>
+                <span aria-hidden="true" className="hidden sm:inline">·</span>
+                <span className="hidden sm:inline text-stone-300 font-normal">{article.authorRole}</span>
               </div>
 
               {/* Clickable Headline / Title that links directly to the post */}
@@ -407,16 +421,16 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
                 <button
                   type="button"
                   onClick={() => onSelectArticle(article)}
-                  className="text-left font-serif text-xl sm:text-3xl md:text-4xl font-bold text-white hover:text-[#F3C562] hover:underline decoration-[#F3C562]/80 underline-offset-4 leading-tight tracking-tight transition-colors cursor-pointer group/title drop-shadow-md"
+                  className="text-left font-serif text-base sm:text-3xl md:text-4xl font-bold text-white hover:text-[#F3C562] hover:underline decoration-[#F3C562]/80 underline-offset-4 leading-snug sm:leading-tight tracking-tight transition-colors cursor-pointer group/title drop-shadow-md line-clamp-2 sm:line-clamp-none"
                 >
                   <span>{article.title}</span>
-                  <ArrowUpRight className="inline-block w-5 h-5 sm:w-6 sm:h-6 ml-1.5 text-[#F3C562] transition-transform group-hover/title:translate-x-0.5 group-hover/title:-translate-y-0.5" />
+                  <ArrowUpRight className="inline-block w-4 h-4 sm:w-6 sm:h-6 ml-1 sm:ml-1.5 text-[#F3C562] transition-transform group-hover/title:translate-x-0.5 group-hover/title:-translate-y-0.5" />
                 </button>
               </h3>
 
               <p
                 onClick={() => onSelectArticle(article)}
-                className="mt-1.5 text-xs sm:text-sm text-stone-200 line-clamp-2 leading-relaxed cursor-pointer hover:text-white transition-colors drop-shadow-xs"
+                className="mt-1 sm:mt-1.5 text-xs sm:text-sm text-stone-200 line-clamp-1 sm:line-clamp-2 leading-relaxed cursor-pointer hover:text-white transition-colors drop-shadow-xs"
               >
                 {article.deck}
               </p>

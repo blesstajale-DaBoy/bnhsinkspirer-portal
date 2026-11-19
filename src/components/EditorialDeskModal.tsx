@@ -1723,23 +1723,34 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
   );
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-stone-900/80 backdrop-blur-xs flex justify-center p-2 sm:p-3 md:p-5">
-      <div className="bg-white text-[#1C1917] w-full max-w-7xl rounded-lg shadow-2xl border border-stone-200 flex flex-col overflow-hidden my-auto max-h-[94vh]">
+    <div className="fixed inset-0 z-50 overflow-hidden bg-stone-900/80 backdrop-blur-xs flex items-center justify-center p-0 sm:p-3 md:p-5">
+      <div className="bg-white text-[#1C1917] w-full max-w-7xl h-[100dvh] sm:h-auto sm:max-h-[94dvh] rounded-none sm:rounded-lg shadow-2xl border-0 sm:border border-stone-200 flex flex-col overflow-hidden">
         {/* Header Strip with Integrated Session & Quick Controls (Maroon Theme + Official Inkspirer Logo) */}
-        <div className="bg-[#4A0E17] text-white px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-3 border-b border-[#34070E]">
-          <div className="flex items-center gap-3">
-            <InkspirerLogo size="sm" className="w-10 h-10" />
-            <div>
-              <div className="text-[10px] font-bold tracking-widest uppercase text-[#F3C562]">
-                Barobo National High School · Publication Office
+        <div className="bg-[#4A0E17] text-white px-3 sm:px-6 py-3 flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 border-b border-[#34070E] shrink-0">
+          <div className="flex items-center justify-between gap-2.5 w-full lg:w-auto min-w-0">
+            <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+              <InkspirerLogo size="sm" className="w-8 h-8 sm:w-10 sm:h-10 shrink-0" />
+              <div className="min-w-0">
+                <div className="text-[10px] font-bold tracking-widest uppercase text-[#F3C562] truncate">
+                  Barobo National High School · Publication Office
+                </div>
+                <h2 className="font-brand text-sm sm:text-xl font-bold tracking-tight text-white truncate">
+                  The Inkspirer Editorial & Category Desk
+                </h2>
               </div>
-              <h2 className="font-brand text-base sm:text-xl font-bold tracking-tight text-white">
-                The Inkspirer Editorial & Category Desk
-              </h2>
             </div>
+
+            <button
+              onClick={onClose}
+              className="lg:hidden min-w-[40px] min-h-[40px] flex items-center justify-center rounded text-stone-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer shrink-0"
+              title="Close Portal"
+              aria-label="Close Editorial Desk"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto scrollbar-none flex-nowrap lg:flex-wrap pb-0.5 lg:pb-0 -mx-1 px-1 lg:mx-0 lg:px-0">
             {deskToast && (
               <span className="text-xs bg-emerald-700/90 text-white px-2.5 py-1 rounded font-medium">
                 {deskToast}
@@ -1945,8 +1956,9 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
 
             <button
               onClick={onClose}
-              className="p-1.5 rounded text-stone-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+              className="hidden lg:inline-flex p-1.5 rounded text-stone-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer shrink-0"
               title="Close Portal"
+              aria-label="Close Editorial Desk"
             >
               <X className="w-5 h-5" />
             </button>
@@ -1955,12 +1967,12 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
 
         {/* Auth Gate Screen (if locked): 10-Role Editorial Position Login */}
         {!isAuthenticated ? (
-          <div className="p-6 sm:p-8 max-w-2xl mx-auto my-auto w-full overflow-y-auto space-y-5">
+          <div className="p-4 sm:p-8 max-w-2xl mx-auto my-auto w-full overflow-y-auto space-y-5 pb-safe">
             <div className="text-center space-y-2">
               <div className="flex items-center justify-center mx-auto">
                 <InkspirerLogo size="lg" />
               </div>
-              <h3 className="font-serif text-2xl font-bold text-stone-900">
+              <h3 className="font-serif text-xl sm:text-2xl font-bold text-stone-900">
                 Editorial Board Role Authorization
               </h3>
               <p className="text-xs text-stone-600 max-w-md mx-auto">
@@ -1968,7 +1980,7 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
               </p>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {EDITORIAL_ROLES.map((role) => {
                 const isSelected = selectedGateRoleId === role.id;
                 return (
@@ -2073,17 +2085,17 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
           </div>
         ) : (
           <div className="flex-1 flex flex-col overflow-hidden">
-            {/* Maroon Quick-Access Navigator Grid (All 9 sections visible at once without horizontal scrolling) */}
-            <div className="bg-[#38080F] border-b border-[#58111A] px-4 sm:px-6 py-2.5 space-y-2 text-white">
+            {/* Maroon Quick-Access Navigator Grid */}
+            <div className="bg-[#38080F] border-b border-[#58111A] px-3 sm:px-6 py-2.5 text-white shrink-0">
               {/* Mobile Quick-Jump Selector + Session Bar (< 640px) */}
-              <div className="flex sm:hidden items-center justify-between gap-2 pb-1 border-b border-[#58111A]">
-                <div className="flex items-center gap-1.5 flex-1">
+              <div className="flex sm:hidden items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 flex-1 min-w-0">
                   <LayoutGrid className="w-4 h-4 text-[#D4AF37] shrink-0" />
                   <select
                     aria-label="Quick Jump to Portal Menu"
                     value={activeTab}
                     onChange={(e) => setActiveTab(e.target.value as typeof activeTab)}
-                    className="w-full px-2.5 py-1.5 text-xs font-bold bg-[#4A0E17] border border-[#681622] rounded text-[#F3C562] focus:outline-none focus:ring-1 focus:ring-[#D4AF37]"
+                    className="w-full min-h-[38px] px-2.5 py-1.5 text-sm font-bold bg-[#4A0E17] border border-[#681622] rounded text-[#F3C562] focus:outline-none focus:ring-1 focus:ring-[#D4AF37]"
                   >
                     {deskMenuItems.map((item) => (
                       <option key={item.id} value={item.id} className="bg-[#4A0E17] text-white">
@@ -2093,24 +2105,37 @@ export const EditorialDeskModal: React.FC<EditorialDeskModalProps> = ({
                   </select>
                 </div>
                 {userProfile && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      logout();
-                      setIsPinUnlocked(false);
-                      showToast('Signed out of Editorial Desk');
-                    }}
-                    className="px-2.5 py-1.5 text-[11px] font-semibold text-amber-200 bg-[#4A0E17] border border-[#681622] rounded shrink-0"
-                  >
-                    Sign Out
-                  </button>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {onOpenAccountModal && (
+                      <button
+                        type="button"
+                        onClick={onOpenAccountModal}
+                        className="min-h-[38px] px-2 text-[#F3C562] bg-[#4A0E17] border border-[#681622] rounded flex items-center justify-center"
+                        title="Account & Password"
+                        aria-label="Account and Password"
+                      >
+                        <KeyRound className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        logout();
+                        setIsPinUnlocked(false);
+                        showToast('Signed out of Editorial Desk');
+                      }}
+                      className="min-h-[38px] px-2.5 text-[11px] font-semibold text-amber-200 bg-[#4A0E17] border border-[#681622] rounded shrink-0"
+                    >
+                      Sign Out
+                    </button>
+                  </div>
                 )}
               </div>
 
-              {/* Full Wrapped 9-Item Maroon Navigator Grid */}
+              {/* Tablet & Desktop Wrapped Navigator Grid */}
               <nav
                 aria-label="Editorial Desk & Adviser Portal Navigation"
-                className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 xl:grid-cols-9 gap-1.5"
+                className="hidden sm:grid sm:grid-cols-3 md:grid-cols-5 xl:grid-cols-9 gap-1.5"
               >
                 {deskMenuItems.map((item) => {
                   const IconComp = item.icon;

@@ -247,7 +247,7 @@ export const ArticleReaderModal: React.FC<ArticleReaderModalProps> = ({
       ref={outerContainerRef}
       className="fixed inset-0 z-50 overflow-hidden bg-stone-900/80 backdrop-blur-xs flex items-center justify-center p-0 sm:p-4 md:p-6"
     >
-      <div className="bg-[#FBF9F5] text-[#1C1917] w-full max-w-4xl h-screen sm:h-auto sm:max-h-[92vh] sm:rounded-lg shadow-2xl border border-stone-200 flex flex-col overflow-hidden relative">
+      <div className="bg-[#FBF9F5] text-[#1C1917] w-full max-w-4xl h-[100dvh] sm:h-auto sm:max-h-[92dvh] sm:rounded-lg shadow-2xl border-0 sm:border border-stone-200 flex flex-col overflow-hidden relative">
         {/* Scroll-Based Reading Progress Bar Pinned at the Top of ArticleReaderModal */}
         <div
           onClick={handleProgressBarClick}
@@ -268,28 +268,28 @@ export const ArticleReaderModal: React.FC<ArticleReaderModalProps> = ({
         </div>
 
         {/* Pinned Utility Header at the Top of the Modal */}
-        <div className="shrink-0 z-20 bg-white/95 backdrop-blur-sm border-b border-stone-200 px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-xs text-stone-500 truncate">
+        <div className="shrink-0 z-20 bg-white/95 backdrop-blur-sm border-b border-stone-200 px-3 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 text-[11px] sm:text-xs text-stone-500 min-w-0 truncate">
             {/* BNHS Logo & Inkspirer Emblem */}
             <img
               src="/assets/aistudio/BNHS_LOGO_29bb7e4c.jpg"
               alt="BNHS Logo"
               className="w-5 h-5 object-contain rounded-full border border-[#D4AF37]/80 shrink-0"
             />
-            <InkspirerLogo size="sm" className="w-5 h-5 shrink-0 hidden xs:inline-flex" />
+            <InkspirerLogo size="sm" className="w-5 h-5 shrink-0 hidden sm:inline-flex" />
             <span className="font-semibold text-[#0B2545] font-brand hidden sm:inline">
               THE INKSPIRER
             </span>
             <span className="hidden sm:inline" aria-hidden="true">·</span>
-            <span className="font-semibold text-[#133E87]">{article.category} Desk</span>
+            <span className="font-semibold text-[#133E87] truncate">{article.category}</span>
             <span className="hidden md:inline" aria-hidden="true">·</span>
             <span className="truncate hidden md:inline">{article.issue}</span>
 
-            <span aria-hidden="true">·</span>
+            <span className="hidden sm:inline" aria-hidden="true">·</span>
 
             {/* Estimated Reading Time Based on Content Word Count */}
             <span
-              className="inline-flex items-center gap-1 font-semibold text-[#4A0E17] shrink-0 tabular-nums"
+              className="hidden sm:inline-flex items-center gap-1 font-semibold text-[#4A0E17] shrink-0 tabular-nums"
               title={`Estimated reading time based on ${wordCountForReadTime.toLocaleString()} words`}
             >
               <Clock className="w-3.5 h-3.5 text-[#781423]" />
@@ -328,7 +328,7 @@ export const ArticleReaderModal: React.FC<ArticleReaderModalProps> = ({
             </span>
           </div>
 
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <div className="flex items-center gap-0.5 sm:gap-1.5 shrink-0">
             {/* Font Size Selector */}
             <div className="hidden sm:flex items-center bg-stone-100 rounded border border-stone-200 p-0.5 text-xs text-stone-700">
               <button
@@ -357,7 +357,7 @@ export const ArticleReaderModal: React.FC<ArticleReaderModalProps> = ({
             {/* Audio Reader */}
             <button
               onClick={handleSpeechToggle}
-              className={`p-2 rounded text-stone-600 hover:text-stone-900 hover:bg-stone-100 transition-colors ${
+              className={`min-w-[36px] min-h-[36px] flex items-center justify-center rounded text-stone-600 hover:text-stone-900 hover:bg-stone-100 transition-colors ${
                 isSpeaking ? 'text-[#133E87] bg-blue-50' : ''
               }`}
               title={isSpeaking ? 'Stop listening' : 'Listen to story'}
@@ -368,7 +368,7 @@ export const ArticleReaderModal: React.FC<ArticleReaderModalProps> = ({
             {/* Print */}
             <button
               onClick={() => window.print()}
-              className="p-2 rounded text-stone-600 hover:text-stone-900 hover:bg-stone-100 transition-colors"
+              className="hidden sm:inline-flex min-w-[36px] min-h-[36px] items-center justify-center rounded text-stone-600 hover:text-stone-900 hover:bg-stone-100 transition-colors"
               title="Print article"
             >
               <Printer className="w-4 h-4" />
@@ -377,7 +377,7 @@ export const ArticleReaderModal: React.FC<ArticleReaderModalProps> = ({
             {/* Share */}
             <button
               onClick={handleShare}
-              className="p-2 rounded text-stone-600 hover:text-stone-900 hover:bg-stone-100 transition-colors relative"
+              className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded text-stone-600 hover:text-stone-900 hover:bg-stone-100 transition-colors relative"
               title="Copy share link"
             >
               {copiedShare ? (
@@ -391,7 +391,7 @@ export const ArticleReaderModal: React.FC<ArticleReaderModalProps> = ({
             <button
               type="button"
               onClick={handleScrollToComments}
-              className="px-2 py-1.5 rounded text-stone-600 hover:text-[#4A0E17] hover:bg-stone-100 transition-colors inline-flex items-center gap-1 cursor-pointer"
+              className="px-2 min-h-[36px] rounded text-stone-600 hover:text-[#4A0E17] hover:bg-stone-100 transition-colors inline-flex items-center gap-1 cursor-pointer"
               title="Jump to campus comments and feedback"
             >
               <MessageSquare className="w-4 h-4" />
@@ -401,7 +401,7 @@ export const ArticleReaderModal: React.FC<ArticleReaderModalProps> = ({
             {/* Like */}
             <button
               onClick={(e) => onToggleLike(article.id, e)}
-              className={`p-2 rounded transition-colors ${
+              className={`min-w-[36px] min-h-[36px] flex items-center justify-center rounded transition-colors ${
                 isLiked ? 'text-rose-600 bg-rose-50' : 'text-stone-600 hover:bg-stone-100'
               }`}
               title="Like article"
@@ -412,7 +412,7 @@ export const ArticleReaderModal: React.FC<ArticleReaderModalProps> = ({
             {/* Bookmark */}
             <button
               onClick={(e) => onToggleBookmark(article.id, e)}
-              className={`p-2 rounded transition-colors ${
+              className={`min-w-[36px] min-h-[36px] flex items-center justify-center rounded transition-colors ${
                 isBookmarked ? 'text-amber-700 bg-amber-50' : 'text-stone-600 hover:bg-stone-100'
               }`}
               title={isBookmarked ? 'Saved to bookmarks' : 'Bookmark article'}
@@ -423,8 +423,9 @@ export const ArticleReaderModal: React.FC<ArticleReaderModalProps> = ({
             {/* Close Button */}
             <button
               onClick={onClose}
-              className="p-2 rounded text-stone-500 hover:text-stone-900 hover:bg-stone-100 transition-colors ml-1"
+              className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded text-stone-500 hover:text-stone-900 hover:bg-stone-100 transition-colors ml-0.5"
               title="Close reader"
+              aria-label="Close reader"
             >
               <X className="w-5 h-5" />
             </button>
@@ -437,9 +438,9 @@ export const ArticleReaderModal: React.FC<ArticleReaderModalProps> = ({
           onScroll={handleScroll}
           className="flex-1 overflow-y-auto scroll-smooth"
         >
-          <div className="p-6 sm:p-10 lg:p-12 max-w-3xl mx-auto w-full">
+          <div className="p-4 sm:p-8 lg:p-12 max-w-3xl mx-auto w-full pb-safe">
           {/* Category, Date & Estimated Reading Time Metadata Header */}
-          <div className="flex flex-wrap items-center gap-2 text-xs text-stone-500 mb-3">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-stone-500 mb-3">
             <span className="font-bold uppercase tracking-wider text-[#133E87]">
               {article.category}
             </span>
@@ -458,19 +459,19 @@ export const ArticleReaderModal: React.FC<ArticleReaderModalProps> = ({
 
           {/* Headline */}
           <h1
-            className="font-serif text-3xl sm:text-4xl lg:text-5xl font-bold text-stone-900 leading-[1.2] tracking-tight mb-4"
+            className="font-serif text-2xl sm:text-4xl lg:text-5xl font-bold text-stone-900 leading-[1.2] tracking-tight mb-3 sm:mb-4"
             style={{ textWrap: 'balance' }}
           >
             {article.title}
           </h1>
 
           {/* Subtitle / Deck */}
-          <p className="font-sans text-lg sm:text-xl text-stone-600 leading-relaxed mb-6 font-normal">
+          <p className="font-sans text-base sm:text-xl text-stone-600 leading-relaxed mb-5 sm:mb-6 font-normal">
             {article.deck}
           </p>
 
           {/* Byline Strip with Author Component */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-y border-stone-200 py-3.5 mb-8 gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-y border-stone-200 py-3.5 mb-6 sm:mb-8 gap-2.5 sm:gap-3">
             <AuthorProfile
               author={article.author}
               role={article.authorRole}
@@ -483,7 +484,7 @@ export const ArticleReaderModal: React.FC<ArticleReaderModalProps> = ({
               variant="reader-header"
             />
 
-            <div className="text-left sm:text-right text-stone-500 text-xs shrink-0 pl-12 sm:pl-0">
+            <div className="text-left sm:text-right text-stone-500 text-xs shrink-0">
               <div className="font-medium text-stone-700">Barobo National High School</div>
               <div className="text-[11px]">Region XIII Caraga · DepEd Division Surigao del Sur</div>
             </div>
@@ -567,7 +568,7 @@ export const ArticleReaderModal: React.FC<ArticleReaderModalProps> = ({
                   <EditorialArtwork
                     category={article.category}
                     customImageUrl={article.imageUrl}
-                    className="w-full h-64 sm:h-80"
+                    className="w-full h-52 sm:h-72 md:h-80"
                     variant="lead"
                   />
                 )}
@@ -583,16 +584,16 @@ export const ArticleReaderModal: React.FC<ArticleReaderModalProps> = ({
 
           {/* Pull Quote Highlight */}
           {article.pullQuote && (
-            <div className="my-8 py-6 border-y-2 border-stone-200 bg-white/70 px-6 sm:px-8 text-center">
+            <div className="my-6 sm:my-8 py-4 sm:py-6 border-y-2 border-stone-200 bg-white/70 px-4 sm:px-8 text-center">
               <Quote className="w-6 h-6 text-[#133E87]/40 mx-auto mb-2" />
-              <blockquote className="font-serif italic text-xl sm:text-2xl text-stone-800 leading-relaxed">
+              <blockquote className="font-serif italic text-lg sm:text-2xl text-stone-800 leading-relaxed">
                 {article.pullQuote}
               </blockquote>
             </div>
           )}
 
           {/* Story Paragraphs with Drop Cap on the First Paragraph */}
-          <div className={`space-y-6 text-stone-800 font-sans ${getFontSizeClass()}`}>
+          <div className={`space-y-5 sm:space-y-6 text-stone-800 font-sans ${getFontSizeClass()}`}>
             {article.content.map((paragraph, index) => {
               if (index === 0) {
                 // First letter drop cap
@@ -600,7 +601,7 @@ export const ArticleReaderModal: React.FC<ArticleReaderModalProps> = ({
                 const restOfParagraph = paragraph.slice(1);
                 return (
                   <p key={index} className="leading-relaxed">
-                    <span className="float-left text-5xl sm:text-6xl font-serif font-bold text-[#0B2545] leading-none pr-3 pt-1">
+                    <span className="float-left text-4xl sm:text-6xl font-serif font-bold text-[#0B2545] leading-none pr-2.5 sm:pr-3 pt-1">
                       {firstLetter}
                     </span>
                     {restOfParagraph}

@@ -114,12 +114,12 @@ export const StoryFilter: React.FC<StoryFilterProps> = ({
   ) || dynamicCategories[0];
 
   return (
-    <div id="stories-section" className="scroll-mt-20 border-b border-[#58111A] bg-[#38080F] py-6 text-white">
-      <div className="max-w-7xl mx-auto px-6">
+    <div id="stories-section" className="scroll-mt-24 border-b border-[#58111A] bg-[#38080F] py-4 sm:py-6 text-white">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6">
         {/* Category Description Tagline */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
           <div>
-            <h2 className="font-serif text-2xl font-bold text-white tracking-tight flex items-center gap-2">
+            <h2 className="font-serif text-xl sm:text-2xl font-bold text-white tracking-tight flex items-center gap-2">
               <span
                 className="w-2.5 h-2.5 rounded-full"
                 style={{ backgroundColor: currentCategoryObj.color }}
@@ -148,7 +148,7 @@ export const StoryFilter: React.FC<StoryFilterProps> = ({
             <div className="inline-flex items-center bg-[#28050B] p-0.5 rounded border border-[#58111A]">
               <button
                 onClick={() => onSortChange('latest')}
-                className={`px-2.5 py-1 rounded transition-colors whitespace-nowrap ${
+                className={`px-3 py-1.5 min-h-[34px] rounded transition-colors whitespace-nowrap cursor-pointer ${
                   sortBy === 'latest'
                     ? 'bg-[#4A0E17] text-[#F3C562] font-bold shadow-2xs'
                     : 'text-stone-300 hover:text-white'
@@ -158,7 +158,7 @@ export const StoryFilter: React.FC<StoryFilterProps> = ({
               </button>
               <button
                 onClick={() => onSortChange('popular')}
-                className={`px-2.5 py-1 rounded transition-colors whitespace-nowrap ${
+                className={`px-3 py-1.5 min-h-[34px] rounded transition-colors whitespace-nowrap cursor-pointer ${
                   sortBy === 'popular'
                     ? 'bg-[#4A0E17] text-[#F3C562] font-bold shadow-2xs'
                     : 'text-stone-300 hover:text-white'
@@ -172,7 +172,7 @@ export const StoryFilter: React.FC<StoryFilterProps> = ({
               <button
                 type="button"
                 onClick={onOpenEditorialDesk}
-                className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded bg-[#4A0E17] text-[#F3C562] border border-[#6B1420] hover:bg-[#5C1521] transition-colors shadow-2xs cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[36px] text-xs font-semibold rounded bg-[#4A0E17] text-[#F3C562] border border-[#6B1420] hover:bg-[#5C1521] transition-colors shadow-2xs cursor-pointer"
                 title="Create, edit, delete, and upload photos for stories and publication categories"
               >
                 <InkspirerLogo size="sm" className="w-4! h-4!" showBorder={false} />
@@ -183,16 +183,16 @@ export const StoryFilter: React.FC<StoryFilterProps> = ({
         </div>
 
         {/* Filter Controls Row */}
-        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 sm:gap-4">
           {/* Segmented Category Buttons with requested distinct colors */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1.5 md:pb-0 scrollbar-none">
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 lg:pb-0 scrollbar-none">
             {dynamicCategories.map((cat) => {
               const isActive = activeCategory.toLowerCase() === cat.value.toLowerCase();
               return (
                 <button
                   key={cat.value}
                   onClick={() => onSelectCategory(cat.value)}
-                  className="px-3.5 py-1.5 text-xs font-semibold rounded transition-all whitespace-nowrap shrink-0 border flex items-center gap-1.5 shadow-2xs"
+                  className="min-h-[38px] px-3.5 py-1.5 text-xs font-semibold rounded transition-all whitespace-nowrap shrink-0 border flex items-center gap-1.5 shadow-2xs cursor-pointer"
                   style={
                     isActive
                       ? {
@@ -220,23 +220,24 @@ export const StoryFilter: React.FC<StoryFilterProps> = ({
           </div>
 
           {/* Search Input Box */}
-          <div className="relative w-full md:w-72 shrink-0">
+          <div className="relative w-full lg:w-72 xl:w-80 shrink-0">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-stone-400">
-              <Search className="w-3.5 h-3.5 text-stone-400" />
+              <Search className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-stone-400" />
             </div>
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
               placeholder="Search keyword, author, or beat..."
-              className="w-full pl-9 pr-8 py-1.5 text-xs bg-[#28050B] border border-[#58111A] rounded text-white placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-[#D4AF37] focus:border-[#D4AF37] transition-colors"
+              className="w-full min-h-[40px] pl-9 pr-9 py-2 sm:py-1.5 text-sm sm:text-xs bg-[#28050B] border border-[#58111A] rounded text-white placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-[#D4AF37] focus:border-[#D4AF37] transition-colors"
             />
             {searchQuery && (
               <button
                 onClick={() => onSearchChange('')}
-                className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-stone-400 hover:text-white"
+                className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-stone-400 hover:text-white cursor-pointer"
+                aria-label="Clear search"
               >
-                <X className="w-3.5 h-3.5" />
+                <X className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
               </button>
             )}
           </div>

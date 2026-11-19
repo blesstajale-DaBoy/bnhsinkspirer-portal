@@ -51,7 +51,7 @@ export const StoryCard: React.FC<StoryCardProps> = ({
         </div>
 
         {/* Content Container */}
-        <div className="p-5">
+        <div className="p-4 sm:p-5">
           {/* Zero-Pill Unboxed Metadata with Category Color Indicator & Estimated Read Time */}
           <div className="flex items-center gap-2 text-xs text-stone-500 mb-2 flex-wrap">
             <span className="flex items-center gap-1.5 font-bold uppercase tracking-wider">
@@ -129,18 +129,18 @@ export const StoryCard: React.FC<StoryCardProps> = ({
       </div>
 
       {/* Card Utility Footer */}
-      <div className="px-5 py-3 bg-[#FBF9F5]/70 border-t border-stone-100 flex items-center justify-between text-xs">
+      <div className="px-4 sm:px-5 py-2.5 sm:py-3 bg-[#FBF9F5]/70 border-t border-stone-100 flex items-center justify-between text-xs">
         <div className="text-[11px] text-stone-500 font-medium flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-          <span>BNHS Official Scribe</span>
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+          <span className="truncate">BNHS Official Scribe</span>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {/* Like */}
           <button
             onClick={(e) => onToggleLike(article.id, e)}
-            className={`inline-flex items-center gap-1 p-1 rounded transition-colors ${
-              isLiked ? 'text-rose-600' : 'text-stone-400 hover:text-stone-700'
+            className={`inline-flex items-center justify-center gap-1 min-w-[36px] min-h-[36px] px-1.5 rounded transition-colors cursor-pointer ${
+              isLiked ? 'text-rose-600 bg-rose-50/70' : 'text-stone-400 hover:text-stone-700 hover:bg-stone-100'
             }`}
             title="Like story"
           >
@@ -151,8 +151,8 @@ export const StoryCard: React.FC<StoryCardProps> = ({
           {/* Bookmark */}
           <button
             onClick={(e) => onToggleBookmark(article.id, e)}
-            className={`p-1 rounded transition-colors ${
-              isBookmarked ? 'text-amber-600' : 'text-stone-400 hover:text-stone-700'
+            className={`min-w-[36px] min-h-[36px] flex items-center justify-center rounded transition-colors cursor-pointer ${
+              isBookmarked ? 'text-amber-600 bg-amber-50/70' : 'text-stone-400 hover:text-stone-700 hover:bg-stone-100'
             }`}
             title={isBookmarked ? 'Remove bookmark' : 'Bookmark story'}
           >

@@ -22,8 +22,8 @@ export const CampusBulletin: React.FC<CampusBulletinProps> = ({
   return (
     <>
       <div className="bg-[#2A050A] text-white border-y border-[#450C13]">
-        <div className="max-w-7xl mx-auto px-6 py-3">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2.5 sm:py-3">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 sm:gap-3">
             {/* Left Tag */}
             <div className="flex items-center gap-2.5 shrink-0">
               <span className="flex items-center justify-center w-6 h-6 rounded bg-[#D4AF37]/20 text-[#D4AF37]">
@@ -40,18 +40,18 @@ export const CampusBulletin: React.FC<CampusBulletinProps> = ({
                 <button
                   key={notice.id}
                   onClick={() => handleOpenNotice(notice)}
-                  className="group inline-flex items-center gap-1.5 text-stone-200 hover:text-white transition-colors text-left cursor-pointer"
+                  className="group inline-flex flex-wrap items-center gap-1.5 text-stone-200 hover:text-white transition-colors text-left cursor-pointer py-0.5"
                 >
                   {notice.urgent && (
-                    <span className="text-[10px] font-bold tracking-wider uppercase text-amber-300 bg-amber-900/60 px-1.5 py-0.5 rounded">
+                    <span className="text-[10px] font-bold tracking-wider uppercase text-amber-300 bg-amber-900/60 px-1.5 py-0.5 rounded shrink-0">
                       Urgent
                     </span>
                   )}
                   <span className="font-medium group-hover:underline underline-offset-2">
                     {notice.title}
                   </span>
-                  <span className="text-stone-400">({notice.deadline || notice.date})</span>
-                  <ChevronRight className="w-3 h-3 text-stone-400 group-hover:translate-x-0.5 transition-transform" />
+                  <span className="text-stone-400 text-[11px]">({notice.deadline || notice.date})</span>
+                  <ChevronRight className="w-3 h-3 text-stone-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
                 </button>
               ))}
             </div>
@@ -66,8 +66,14 @@ export const CampusBulletin: React.FC<CampusBulletinProps> = ({
 
       {/* Notice Detail Dialog */}
       {selectedNotice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6 border border-stone-200 text-[#1C1917]">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs"
+          onClick={() => setSelectedNotice(null)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl max-w-lg w-full p-4 sm:p-6 border border-stone-200 text-[#1C1917] max-h-[88dvh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-start justify-between gap-4 mb-4">
               <div>
                 <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[#133E87] mb-1">

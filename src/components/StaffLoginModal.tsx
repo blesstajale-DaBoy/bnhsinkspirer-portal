@@ -234,7 +234,7 @@ export const StaffLoginModal: React.FC<StaffLoginModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-stone-950/85 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto"
+      className="fixed inset-0 z-50 bg-stone-950/85 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto"
       role="dialog"
       aria-modal="true"
       aria-labelledby="staff-login-modal-title"
@@ -245,22 +245,22 @@ export const StaffLoginModal: React.FC<StaffLoginModalProps> = ({
           !isSignedIn && !isLampLit
             ? 'bg-[#170307] text-white border-[#D4AF37]/40'
             : 'bg-[#FBF9F5] text-stone-900 border-[#D4AF37]/60'
-        } rounded-xl shadow-2xl border overflow-hidden my-auto max-h-[92vh] flex flex-col transition-all duration-500`}
+        } rounded-lg sm:rounded-xl shadow-2xl border overflow-hidden my-auto max-h-[94dvh] flex flex-col transition-all duration-500`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Maroon Editorial Modal Header */}
-        <div className="bg-[#34070E] border-b border-[#58111A] px-5 sm:px-6 py-4 flex items-center justify-between gap-3 shrink-0">
-          <div className="flex items-center gap-2.5">
+        <div className="bg-[#34070E] border-b border-[#58111A] px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-2.5 sm:gap-3 shrink-0">
+          <div className="flex items-center gap-2.5 min-w-0">
             <img
               src="/assets/aistudio/BNHS_LOGO_29bb7e4c.jpg"
               alt="BNHS Logo"
-              className="w-8 h-8 object-contain rounded-full border border-[#D4AF37]/80 shrink-0"
+              className="w-7 h-7 sm:w-8 sm:h-8 object-contain rounded-full border border-[#D4AF37]/80 shrink-0"
             />
-            <InkspirerLogo size="sm" />
-            <div>
+            <InkspirerLogo size="sm" className="hidden sm:inline-flex shrink-0" />
+            <div className="min-w-0">
               <h2
                 id="staff-login-modal-title"
-                className="font-serif text-base sm:text-lg font-bold text-[#F3C562] leading-tight"
+                className="font-serif text-sm sm:text-lg font-bold text-[#F3C562] leading-tight truncate"
               >
                 {isSignedIn
                   ? 'My Editorial Account'
@@ -268,7 +268,7 @@ export const StaffLoginModal: React.FC<StaffLoginModalProps> = ({
                   ? 'Editorial Board Role Login'
                   : 'The Inkspirer · Magical Login Lamp'}
               </h2>
-              <p className="text-[11px] text-stone-300">
+              <p className="text-[11px] text-stone-300 truncate">
                 The Inkspirer · Barobo National High School
               </p>
             </div>
@@ -277,7 +277,7 @@ export const StaffLoginModal: React.FC<StaffLoginModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded text-stone-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+            className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded text-stone-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer shrink-0"
             aria-label="Close login modal"
           >
             <X className="w-5 h-5" />
@@ -286,7 +286,7 @@ export const StaffLoginModal: React.FC<StaffLoginModalProps> = ({
 
         {/* Body */}
         {isSignedIn && userProfile ? (
-          <div className="p-5 sm:p-6 overflow-y-auto">
+          <div className="p-4 sm:p-6 overflow-y-auto">
             {/* SIGNED-IN VIEW: STRICTLY ISOLATED TO OWN ACCOUNT ONLY */}
             <div className="space-y-5">
               {/* Own Account Identity Card */}
@@ -394,7 +394,7 @@ export const StaffLoginModal: React.FC<StaffLoginModalProps> = ({
                           value={currentPassword}
                           onChange={(e) => setCurrentPassword(e.target.value)}
                           placeholder="Enter current password"
-                          className="w-full px-3 py-2 text-xs bg-white border border-stone-300 rounded focus:outline-hidden focus:ring-2 focus:ring-[#D4AF37]"
+                          className="w-full px-3 py-2.5 sm:py-2 text-sm sm:text-xs bg-white border border-stone-300 rounded focus:outline-hidden focus:ring-2 focus:ring-[#D4AF37]"
                         />
                       </div>
 
@@ -415,7 +415,7 @@ export const StaffLoginModal: React.FC<StaffLoginModalProps> = ({
                             value={newPassword}
                             onChange={(e) => setNewPassword(e.target.value)}
                             placeholder="At least 4 characters"
-                            className="w-full px-3 py-2 text-xs bg-white border border-stone-300 rounded focus:outline-hidden focus:ring-2 focus:ring-[#D4AF37]"
+                            className="w-full px-3 py-2.5 sm:py-2 text-sm sm:text-xs bg-white border border-stone-300 rounded focus:outline-hidden focus:ring-2 focus:ring-[#D4AF37]"
                           />
                         </div>
                         <div>
@@ -434,7 +434,7 @@ export const StaffLoginModal: React.FC<StaffLoginModalProps> = ({
                             value={confirmPassword}
                             onChange={(e) => setConfirmPassword(e.target.value)}
                             placeholder="Re-enter new password"
-                            className="w-full px-3 py-2 text-xs bg-white border border-stone-300 rounded focus:outline-hidden focus:ring-2 focus:ring-[#D4AF37]"
+                            className="w-full px-3 py-2.5 sm:py-2 text-sm sm:text-xs bg-white border border-stone-300 rounded focus:outline-hidden focus:ring-2 focus:ring-[#D4AF37]"
                           />
                         </div>
                       </div>
@@ -502,7 +502,7 @@ export const StaffLoginModal: React.FC<StaffLoginModalProps> = ({
           /* LAMP LIT STAGE: GLOWING LAMP + ILLUMINATED 10-ROLE EDITORIAL LOGIN */
           <div className="flex flex-col md:flex-row overflow-y-auto flex-1">
             {/* Glowing Study Lamp Column */}
-            <div className="md:w-68 lg:w-72 shrink-0 bg-linear-to-b from-[#2D070F] via-[#1D0409] to-[#120205] border-b md:border-b-0 md:border-r border-[#58111A] flex items-center justify-center">
+            <div className="py-2 md:py-0 md:w-68 lg:w-72 shrink-0 bg-linear-to-b from-[#2D070F] via-[#1D0409] to-[#120205] border-b md:border-b-0 md:border-r border-[#58111A] flex items-center justify-center">
               <MagicalLoginLamp
                 isLit={true}
                 onToggle={() => setIsLampLit(false)}
@@ -511,7 +511,7 @@ export const StaffLoginModal: React.FC<StaffLoginModalProps> = ({
             </div>
 
             {/* Illuminated Editorial Board Role Login Panel */}
-            <div className="flex-1 p-5 sm:p-6 overflow-y-auto bg-[#FBF9F5] relative">
+            <div className="flex-1 p-4 sm:p-6 overflow-y-auto bg-[#FBF9F5] relative">
               <div
                 aria-hidden="true"
                 className="pointer-events-none absolute top-0 left-0 right-0 h-20 opacity-50"
@@ -520,9 +520,9 @@ export const StaffLoginModal: React.FC<StaffLoginModalProps> = ({
                     'linear-gradient(180deg, rgba(243, 197, 98, 0.22) 0%, rgba(251, 249, 245, 0) 100%)',
                 }}
               />
-              <div className="relative z-10 space-y-5">
+              <div className="relative z-10 space-y-4 sm:space-y-5">
               <div>
-                <div className="flex items-center justify-between gap-2 mb-2">
+                <div className="flex flex-wrap items-center justify-between gap-1.5 mb-2">
                   <span className="text-xs font-bold uppercase tracking-wider text-[#4A0E17]">
                     1. Select Your Editorial Role / Position
                   </span>
@@ -703,7 +703,7 @@ export const StaffLoginModal: React.FC<StaffLoginModalProps> = ({
                 <button
                   type="submit"
                   disabled={isSubmitting || !password.trim()}
-                  className="w-full py-2.5 px-4 rounded-lg bg-[#4A0E17] hover:bg-[#60121F] disabled:opacity-50 text-white text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-colors shadow-xs cursor-pointer"
+                  className="w-full min-h-[44px] py-2.5 px-4 rounded-lg bg-[#4A0E17] hover:bg-[#60121F] disabled:opacity-50 text-white text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-colors shadow-xs cursor-pointer"
                 >
                   {isSubmitting ? (
                     <Loader2 className="w-4 h-4 animate-spin text-[#D4AF37]" />
@@ -732,7 +732,7 @@ export const StaffLoginModal: React.FC<StaffLoginModalProps> = ({
                   type="button"
                   onClick={handleGoogleSignIn}
                   disabled={isGoogleLoading}
-                  className="w-full py-2.5 px-4 rounded-lg bg-white hover:bg-stone-50 text-stone-800 border border-stone-300 shadow-2xs text-xs font-semibold flex items-center justify-center gap-2.5 transition-all disabled:opacity-60 cursor-pointer"
+                  className="w-full min-h-[44px] py-2.5 px-4 rounded-lg bg-white hover:bg-stone-50 text-stone-800 border border-stone-300 shadow-2xs text-xs font-semibold flex items-center justify-center gap-2.5 transition-all disabled:opacity-60 cursor-pointer"
                 >
                   {isGoogleLoading ? (
                     <Loader2 className="w-4 h-4 animate-spin text-[#4A0E17]" />

@@ -50,12 +50,12 @@ export const StoryGrid: React.FC<StoryGridProps> = ({
     });
 
     return (
-      <div className="max-w-7xl mx-auto px-6 py-10">
-        <div className="mb-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
+        <div className="mb-6 sm:mb-8">
           <div className="text-xs uppercase tracking-widest text-[#F3C562] font-semibold mb-1">
             Barobo National High School Gazette
           </div>
-          <h2 className="font-serif text-3xl font-bold text-white">
+          <h2 className="font-serif text-2xl sm:text-3xl font-bold text-white">
             Campus Announcements & Notices
           </h2>
           <p className="text-stone-300 text-sm mt-1">
@@ -135,8 +135,8 @@ export const StoryGrid: React.FC<StoryGridProps> = ({
   // Articles empty state
   if (articles.length === 0) {
     return (
-      <div className="max-w-7xl mx-auto px-6 py-16 text-center">
-        <div className="bg-white border border-stone-200 rounded-lg p-12 max-w-lg mx-auto shadow-2xs">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-10 sm:py-16 text-center">
+        <div className="bg-white border border-stone-200 rounded-lg p-6 sm:p-12 max-w-lg mx-auto shadow-2xs">
           <FileText className="w-12 h-12 text-stone-300 mx-auto mb-4" />
           <h3 className="font-serif text-2xl font-bold text-stone-800 mb-2">
             {showingBookmarks ? 'No Bookmarked Stories' : 'No Stories Found'}
@@ -167,8 +167,8 @@ export const StoryGrid: React.FC<StoryGridProps> = ({
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-10">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6 lg:gap-8">
         {articles.map((article) => {
           // Calculate estimated reading time dynamically based on content length (words / 200 wpm)
           const contentString = Array.isArray(article.content)
