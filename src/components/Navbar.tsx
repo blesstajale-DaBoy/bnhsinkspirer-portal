@@ -77,7 +77,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-[#34070E]/95 backdrop-blur-md border-b border-[#58111A]">
+    <header className="sticky top-0 z-40 bg-[#34070E] sm:bg-[#34070E]/95 sm:backdrop-blur-md border-b border-[#58111A]">
       <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 sm:gap-4 lg:gap-6 px-3 sm:px-6 py-2 sm:py-3">
         {/* Zone 1: Brand Wordmark with School Crest & Publication Emblem */}
         <button

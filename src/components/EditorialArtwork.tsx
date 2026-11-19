@@ -23,6 +23,8 @@ export const EditorialArtwork: React.FC<EditorialArtworkProps> = ({
         <img
           src={resolvedCustomImageUrl}
           alt={`${category} article visual`}
+          loading={variant === 'lead' ? 'eager' : 'lazy'}
+          decoding="async"
           referrerPolicy="no-referrer"
           onError={handleImageErrorWithDriveFallback}
           className="w-full h-full object-cover transition-transform duration-500 hover:scale-105"

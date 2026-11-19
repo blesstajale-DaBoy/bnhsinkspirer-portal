@@ -37,6 +37,45 @@ interface BaroboWeatherData {
 // Barobo, Surigao del Sur coordinates (8.5364° N, 126.1208° E)
 const BAROBO_LAT = 8.5364;
 const BAROBO_LON = 126.1208;
+const WEATHER_CACHE_KEY = 'bnhs_barobo_weather_cache_v1';
+const WEATHER_CACHE_TTL_MS = 15 * 60 * 1000;
+
+// Reusable module-level Intl formatters (avoids expensive per-second constructor overhead on mobile)
+const PST_TIME_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'Asia/Manila',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hour12: true,
+});
+const PST_DATE_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'Asia/Manila',
+  month: 'long',
+  day: 'numeric',
+  year: 'numeric',
+});
+const PST_WEEKDAY_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'Asia/Manila',
+  weekday: 'long',
+});
+const PST_SHORT_WEEKDAY_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  weekday: 'short',
+  timeZone: 'Asia/Manila',
+});
+
+function readCachedWeather(): BaroboWeatherData | null {
+  try {
+    const raw = sessionStorage.getItem(WEATHER_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { savedAt: number; data: BaroboWeatherData };
+    if (Date.now() - parsed.savedAt < WEATHER_CACHE_TTL_MS && parsed.data) {
+      return parsed.data;
+    }
+  } catch {
+    // ignore storage errors
+  }
+  return null;
+}
 
 function getWeatherDescription(code: number): string {
   if (code === 0) return 'Clear Sky';
@@ -95,22 +134,27 @@ export const PhilippineTimeWeatherWidget: React.FC<{ className?: string }> = ({
   className = '',
 }) => {
   const [now, setNow] = useState<Date>(() => new Date());
-  const [weather, setWeather] = useState<BaroboWeatherData>(DEFAULT_BAROBO_WEATHER);
+  const [weather, setWeather] = useState<BaroboWeatherData>(
+    () => readCachedWeather() || DEFAULT_BAROBO_WEATHER
+  );
   const [isRefreshingWeather, setIsRefreshingWeather] = useState(false);
 
-  // Live 1-second clock for Philippine Standard Time (Asia/Manila, UTC+8)
+  // Live 1-second clock for Philippine Standard Time (paused when tab is backgrounded)
   useEffect(() => {
-    const timer = setInterval(() => {
+    const timer = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       setNow(new Date());
     }, 1000);
-    return () => clearInterval(timer);
+    return () => window.clearInterval(timer);
   }, []);
 
   const fetchBaroboWeather = async () => {
     setIsRefreshingWeather(true);
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 6000);
     try {
       const url = `https://api.open-meteo.com/v1/forecast?latitude=${BAROBO_LAT}&longitude=${BAROBO_LON}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Asia%2FManila&forecast_days=3`;
-      const res = await fetch(url);
+      const res = await fetch(url, { signal: controller.signal });
       if (!res.ok) throw new Error('Weather fetch failed');
       const data = await res.json();
 
@@ -125,10 +169,7 @@ export const PhilippineTimeWeatherWidget: React.FC<{ className?: string }> = ({
         let dayLabel = 'Today';
         if (idx > 0) {
           const parsed = new Date(`${dateStr}T00:00:00+08:00`);
-          dayLabel = parsed.toLocaleDateString('en-US', {
-            weekday: 'short',
-            timeZone: 'Asia/Manila',
-          });
+          dayLabel = PST_SHORT_WEEKDAY_FORMATTER.format(parsed);
         }
         return {
           dayLabel,
@@ -139,7 +180,7 @@ export const PhilippineTimeWeatherWidget: React.FC<{ className?: string }> = ({
         };
       });
 
-      setWeather({
+      const nextWeather: BaroboWeatherData = {
         temp: Math.round(Number(data?.current?.temperature_2m ?? 29)),
         feelsLike: Math.round(Number(data?.current?.apparent_temperature ?? 33)),
         humidity: Math.round(Number(data?.current?.relative_humidity_2m ?? 78)),
@@ -152,46 +193,48 @@ export const PhilippineTimeWeatherWidget: React.FC<{ className?: string }> = ({
         forecastDays:
           forecastDays.length > 0 ? forecastDays : DEFAULT_BAROBO_WEATHER.forecastDays,
         isLive: true,
-      });
+      };
+      setWeather(nextWeather);
+      try {
+        sessionStorage.setItem(
+          WEATHER_CACHE_KEY,
+          JSON.stringify({ savedAt: Date.now(), data: nextWeather })
+        );
+      } catch {
+        // ignore storage errors
+      }
     } catch {
       // Keep realistic Barobo tropical coastal weather fallback
     } finally {
+      window.clearTimeout(timeoutId);
       setIsRefreshingWeather(false);
     }
   };
 
   useEffect(() => {
-    fetchBaroboWeather();
-    // Refresh weather every 15 minutes
-    const weatherInterval = setInterval(fetchBaroboWeather, 15 * 60 * 1000);
-    return () => clearInterval(weatherInterval);
+    const cached = readCachedWeather();
+    let initialTimer: number | undefined;
+    if (!cached) {
+      // Defer weather fetch slightly so it doesn't compete with initial mobile paint
+      initialTimer = window.setTimeout(() => {
+        fetchBaroboWeather();
+      }, 1200);
+    }
+    const weatherInterval = window.setInterval(fetchBaroboWeather, WEATHER_CACHE_TTL_MS);
+    return () => {
+      if (initialTimer !== undefined) window.clearTimeout(initialTimer);
+      window.clearInterval(weatherInterval);
+    };
   }, []);
 
-  // Format Philippine Standard Time (Asia/Manila)
-  const pstTimeString = now.toLocaleTimeString('en-US', {
-    timeZone: 'Asia/Manila',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: true,
-  });
-
-  // Format Month, Date, Year in Asia/Manila
-  const pstDateString = now.toLocaleDateString('en-US', {
-    timeZone: 'Asia/Manila',
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-  });
-
-  const pstWeekdayString = now.toLocaleDateString('en-US', {
-    timeZone: 'Asia/Manila',
-    weekday: 'long',
-  });
+  // Format Philippine Standard Time (Asia/Manila) using cached Intl formatters
+  const pstTimeString = PST_TIME_FORMATTER.format(now);
+  const pstDateString = PST_DATE_FORMATTER.format(now);
+  const pstWeekdayString = PST_WEEKDAY_FORMATTER.format(now);
 
   return (
     <div
-      className={`bg-[#36070D]/95 backdrop-blur-md text-white rounded-lg p-2.5 sm:p-3 shadow-2xl border-2 border-[#D4AF37]/85 hover:border-[#F3C562] transition-all text-left w-56 sm:w-64 ${className}`}
+      className={`bg-[#36070D] sm:bg-[#36070D]/95 sm:backdrop-blur-md text-white rounded-lg p-2.5 sm:p-3 shadow-xl border-2 border-[#D4AF37]/85 hover:border-[#F3C562] transition-colors text-left w-56 sm:w-64 ${className}`}
       aria-label="Philippine Standard Time and Barobo, Surigao del Sur Weather Forecast"
     >
       {/* SECTION 1: Philippine Standard Time & Month, Date, Year */}

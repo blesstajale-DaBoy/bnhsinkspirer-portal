@@ -26,8 +26,7 @@ interface CategoryStorySliderProps {
   onSelectArticle: (article: Article) => void;
 }
 
-const SLIDE_INTERVAL_MS = 20000; // 20 seconds as requested
-const TIMER_TICK_MS = 100; // Smooth 10fps progress bar updates
+const SLIDE_INTERVAL_SEC = 20; // 20 seconds per slide
 
 const CATEGORY_BADGE_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   news: { bg: '#FB923C', text: '#2D1204', border: '#FDBA74' },
@@ -38,10 +37,10 @@ const CATEGORY_BADGE_COLORS: Record<string, { bg: string; text: string; border: 
 };
 
 const FALLBACK_CATEGORY_IMAGES: Record<string, string> = {
-  news: 'https://images.unsplash.com/photo-1585829365295-ab7cd400c167?auto=format&fit=crop&w=1200&q=80',
-  features: 'https://images.unsplash.com/photo-1455390582262-044cdead277a?auto=format&fit=crop&w=1200&q=80',
-  opinion: 'https://images.unsplash.com/photo-1457369804613-52c61a468e7d?auto=format&fit=crop&w=1200&q=80',
-  sports: 'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?auto=format&fit=crop&w=1200&q=80',
+  news: 'https://images.unsplash.com/photo-1585829365295-ab7cd400c167?auto=format&fit=crop&w=960&q=75',
+  features: 'https://images.unsplash.com/photo-1455390582262-044cdead277a?auto=format&fit=crop&w=960&q=75',
+  opinion: 'https://images.unsplash.com/photo-1457369804613-52c61a468e7d?auto=format&fit=crop&w=960&q=75',
+  sports: 'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?auto=format&fit=crop&w=960&q=75',
 };
 
 export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
@@ -50,11 +49,35 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
   onSelectArticle,
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [slideResetKey, setSlideResetKey] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
-  const [elapsedMs, setElapsedMs] = useState(0);
-  const elapsedMsRef = useRef(0);
+  const [remainingSeconds, setRemainingSeconds] = useState(SLIDE_INTERVAL_SEC);
+  const [isMobileViewport, setIsMobileViewport] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.innerWidth < 768 : true
+  );
+  // On mobile, load videos on tap so initial page open is instant and never freezes; on desktop, defer mount until after first paint
+  const [isDesktopVideoReady, setIsDesktopVideoReady] = useState(false);
+  const [manuallyActivatedVideoId, setManuallyActivatedVideoId] = useState<string | null>(null);
   const touchStartXRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(max-width: 767px)');
+    const syncViewport = () => setIsMobileViewport(mq.matches);
+    syncViewport();
+    mq.addEventListener?.('change', syncViewport);
+
+    // Defer desktop video playback mount until after initial paint settles
+    const readyTimer = window.setTimeout(() => {
+      setIsDesktopVideoReady(true);
+    }, 550);
+
+    return () => {
+      mq.removeEventListener?.('change', syncViewport);
+      window.clearTimeout(readyTimer);
+    };
+  }, []);
 
   // Build ordered slides from articles across NEWS, FEATURES, OPINION, SPORTS (and any custom categories)
   // Interleaves the top story of News, Features, Opinion, Sports first (prioritizing posts with uploaded videos or photos),
@@ -148,39 +171,46 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
     }
   }, [slides.length, currentIndex]);
 
-  // 20-second automatic slide timer (ticks every 100ms for smooth progress bar & countdown)
+  // Lightweight 1-second countdown timer (paused when tab is hidden or slideshow paused)
   useEffect(() => {
     if (slides.length <= 1 || isPaused) return;
 
-    const timer = setInterval(() => {
-      const nextElapsed = elapsedMsRef.current + TIMER_TICK_MS;
-      if (nextElapsed >= SLIDE_INTERVAL_MS) {
-        elapsedMsRef.current = 0;
-        setElapsedMs(0);
-        setCurrentIndex((curr) => (curr + 1) % slides.length);
-      } else {
-        elapsedMsRef.current = nextElapsed;
-        setElapsedMs(nextElapsed);
-      }
-    }, TIMER_TICK_MS);
+    const timer = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      setRemainingSeconds((prev) => {
+        if (prev <= 1) {
+          setCurrentIndex((curr) => (curr + 1) % slides.length);
+          setSlideResetKey((k) => k + 1);
+          setManuallyActivatedVideoId(null);
+          return SLIDE_INTERVAL_SEC;
+        }
+        return prev - 1;
+      });
+    }, 1000);
 
-    return () => clearInterval(timer);
+    return () => window.clearInterval(timer);
   }, [slides.length, isPaused]);
 
   const handleGoToSlide = (index: number) => {
     if (slides.length === 0) return;
     const nextIndex = (index + slides.length) % slides.length;
     setCurrentIndex(nextIndex);
-    elapsedMsRef.current = 0;
-    setElapsedMs(0);
+    setRemainingSeconds(SLIDE_INTERVAL_SEC);
+    setSlideResetKey((k) => k + 1);
+    setManuallyActivatedVideoId(null);
   };
 
   const activeSlide = slides[currentIndex] || slides[0];
+  const shouldPlayVideoNow = Boolean(
+    activeSlide?.parsedVideo &&
+      ((!isMobileViewport && isDesktopVideoReady) ||
+        manuallyActivatedVideoId === activeSlide.article.id)
+  );
   const {
     resolvedUrl: resolvedActiveVideoUrl,
     isResolving: isResolvingActiveVideo,
     isMissingLocal: isMissingLocalActiveVideo,
-  } = useResolvedVideoUrl(activeSlide?.article.videoUrl);
+  } = useResolvedVideoUrl(shouldPlayVideoNow ? activeSlide?.article.videoUrl : undefined);
 
   if (slides.length === 0 || !activeSlide) return null;
 
@@ -197,12 +227,8 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
       border: categoryColor,
     };
 
-  const totalSeconds = SLIDE_INTERVAL_MS / 1000;
-  const remainingSeconds = Math.max(
-    1,
-    Math.min(totalSeconds, Math.ceil((SLIDE_INTERVAL_MS - elapsedMs) / 1000))
-  );
-  const progressPercentage = Math.min(100, Math.max(0, (elapsedMs / SLIDE_INTERVAL_MS) * 100));
+  const totalSeconds = SLIDE_INTERVAL_SEC;
+  const elapsedSeconds = totalSeconds - remainingSeconds;
 
   return (
     <section
@@ -279,8 +305,8 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
           }}
           className="relative w-full max-w-[1000px] h-[250px] sm:h-[380px] md:h-[460px] lg:h-[500px] mx-auto rounded-lg overflow-hidden border border-[#6B1420] shadow-2xl bg-[#1E0307] group select-none"
         >
-          {/* Slide Media: Video (Local / YouTube / Google Drive / Vimeo / Facebook / TikTok / Direct .mp4 / Any Link) OR Picture (1000 x 500) */}
-          {parsedVideo && !isMissingLocalActiveVideo ? (
+          {/* Slide Media: Video (loaded on-demand on mobile for instant open, auto-deferred on desktop) OR Picture */}
+          {parsedVideo && shouldPlayVideoNow && !isMissingLocalActiveVideo ? (
             <div className="w-full h-full relative overflow-hidden bg-black">
               {isDirectPlaybackType(parsedVideo.type) ? (
                 isResolvingActiveVideo || !effectiveDirectVideoUrl ? (
@@ -296,6 +322,7 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
                     muted={isMuted}
                     loop
                     playsInline
+                    preload="metadata"
                     onClick={() => onSelectArticle(article)}
                     className="w-full h-full object-cover object-center cursor-pointer"
                   />
@@ -311,6 +338,7 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
                       : parsedVideo.embedUrl
                   }
                   title={article.title}
+                  loading="lazy"
                   className="w-full h-full border-0"
                   allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
                   allowFullScreen
@@ -332,6 +360,7 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
                   src={resolvedImageUrl}
                   alt={article.title}
                   referrerPolicy="no-referrer"
+                  decoding="async"
                   onError={handleImageErrorWithDriveFallback}
                   className="w-full h-full object-cover object-center transition-transform duration-700 group-hover:scale-[1.03]"
                 />
@@ -342,6 +371,23 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
                   className="w-full h-full"
                   variant="lead"
                 />
+              )}
+
+              {/* Mobile / Instant Poster Video Play Button Overlay (prevents eager video/iframe freezing on phones) */}
+              {parsedVideo && !shouldPlayVideoNow && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setManuallyActivatedVideoId(article.id);
+                    setIsPaused(true);
+                  }}
+                  aria-label={`Play video for ${article.title}`}
+                  className="absolute left-1/2 top-[38%] sm:top-[44%] -translate-x-1/2 -translate-y-1/2 z-10 inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-[#4A0E17]/90 hover:bg-[#60121F] text-[#F3C562] border-2 border-[#D4AF37] shadow-2xl text-xs font-bold uppercase tracking-wider cursor-pointer active:scale-95 transition-transform"
+                >
+                  <Play className="w-4 h-4 fill-[#F3C562]" />
+                  <span>Play Video</span>
+                </button>
               )}
 
               {/* Editorial dark vignette & bottom gradient overlay for headline legibility */}
@@ -437,14 +483,15 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
             </div>
           </div>
 
-          {/* Smooth 20-Second Progress Accent Bar along the bottom edge of the 1000x500 frame */}
+          {/* Smooth GPU-Composited 20-Second Progress Accent Bar along the bottom edge */}
           {slides.length > 1 && (
-            <div className="absolute bottom-0 inset-x-0 h-1.5 bg-black/50 backdrop-blur-xs z-20">
+            <div className="absolute bottom-0 inset-x-0 h-1.5 bg-black/50 z-20 overflow-hidden">
               <div
-                className="h-full transition-[width] duration-100 ease-linear"
+                key={`top-progress-${slideResetKey}`}
+                className="h-full w-full animate-slide-progress"
                 style={{
-                  width: `${progressPercentage}%`,
                   backgroundColor: isPaused ? '#A8A29E' : badgeStyle.bg,
+                  animationPlayState: isPaused ? 'paused' : 'running',
                 }}
               />
             </div>
@@ -539,7 +586,7 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
               aria-label="Time remaining before next slide"
               aria-valuemin={0}
               aria-valuemax={totalSeconds}
-              aria-valuenow={Math.round(elapsedMs / 1000)}
+              aria-valuenow={elapsedSeconds}
               aria-valuetext={
                 isPaused
                   ? `Paused with ${remainingSeconds} seconds remaining`
@@ -548,16 +595,13 @@ export const CategoryStorySlider: React.FC<CategoryStorySliderProps> = ({
               className="relative h-2 w-full rounded-full bg-[#160205] border border-[#58111A]/80 overflow-hidden"
             >
               <div
-                className="h-full rounded-full transition-[width] duration-100 ease-linear relative"
+                key={`bottom-progress-${slideResetKey}`}
+                className="h-full w-full rounded-full animate-slide-progress"
                 style={{
-                  width: `${progressPercentage}%`,
                   backgroundColor: isPaused ? '#A8A29E' : badgeStyle.bg,
+                  animationPlayState: isPaused ? 'paused' : 'running',
                 }}
-              >
-                {!isPaused && progressPercentage > 1 && (
-                  <span className="absolute right-0 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.9)]" />
-                )}
-              </div>
+              />
             </div>
           </div>
         )}

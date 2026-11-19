@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Feather,
   Bookmark,
@@ -55,6 +55,19 @@ export const Masthead: React.FC<MastheadProps> = ({
   categories,
   editionConfig,
 }) => {
+  const [isDesktopLg, setIsDesktopLg] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.innerWidth >= 1024 : false
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const sync = () => setIsDesktopLg(mq.matches);
+    sync();
+    mq.addEventListener?.('change', sync);
+    return () => mq.removeEventListener?.('change', sync);
+  }, []);
+
   const currentVolumeIssue = editionConfig?.volumeIssue || 'Vol. XXIV · Issue No. 1';
   const currentAcademicYear = editionConfig?.academicYear || 'Academic Year 2026–2027';
   const currentCirculation = editionConfig?.circulation || 'Circulation: 2,800+ Students & Faculty';
@@ -109,30 +122,33 @@ export const Masthead: React.FC<MastheadProps> = ({
 
       {/* Hero Masthead Presentation */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-10 lg:py-12 text-center relative">
-        {/* Desktop Left Side: Philippine Standard Time & Barobo Weather Forecast */}
-        <div className="hidden lg:block absolute top-6 left-8 z-30">
-          <PhilippineTimeWeatherWidget className="origin-top-left" />
-        </div>
-
-        {/* Desktop Right Side: Facebook Page QR Code */}
-        <div className="hidden lg:block absolute top-6 right-8 z-30">
-          <FacebookQrCode size={64} className="origin-top-right shadow-2xl" />
-        </div>
-
-        {/* Mobile & Tablet Utility Row: Weather Widget + Facebook QR cleanly side-by-side (zero overlap) */}
-        <div className="flex lg:hidden items-start justify-between gap-2.5 sm:gap-4 mb-5 max-w-2xl mx-auto">
-          <PhilippineTimeWeatherWidget className="flex-1 min-w-0 !w-auto max-w-[270px] sm:max-w-[290px]" />
-          <FacebookQrCode size={56} className="shrink-0 shadow-xl" />
-        </div>
+        {/* Desktop Left & Right Pinned Utilities — mounted ONLY on desktop (>=1024px) */}
+        {isDesktopLg ? (
+          <>
+            <div className="absolute top-6 left-8 z-30">
+              <PhilippineTimeWeatherWidget className="origin-top-left" />
+            </div>
+            <div className="absolute top-6 right-8 z-30">
+              <FacebookQrCode size={64} className="origin-top-right shadow-2xl" />
+            </div>
+          </>
+        ) : (
+          /* Mobile & Tablet Utility Row — mounted ONLY on <1024px (zero duplicate timers/fetches) */
+          <div className="flex items-start justify-between gap-2.5 sm:gap-4 mb-5 max-w-2xl mx-auto">
+            <PhilippineTimeWeatherWidget className="flex-1 min-w-0 !w-auto max-w-[270px] sm:max-w-[290px]" />
+            <FacebookQrCode size={56} className="shrink-0 shadow-xl" />
+          </div>
+        )}
 
         {/* Uploaded Barobo National High School Official Seal */}
         <div className="flex flex-col items-center justify-center mb-3">
-          <div className="relative group p-1 rounded-full bg-white/10 backdrop-blur-xs border-2 border-[#D4AF37]/80 shadow-2xl hover:border-[#F3C562] transition-all">
+          <div className="relative group p-1 rounded-full bg-white/10 border-2 border-[#D4AF37]/80 shadow-xl hover:border-[#F3C562] transition-all">
             <img
               src="/assets/aistudio/BNHS_LOGO_29bb7e4c.jpg"
               alt="Barobo National High School Official Seal"
               className="w-20 h-20 sm:w-24 sm:h-24 md:w-28 md:h-28 object-contain rounded-full shadow-inner transform group-hover:scale-105 transition-transform duration-300"
               loading="eager"
+              decoding="async"
             />
           </div>
         </div>

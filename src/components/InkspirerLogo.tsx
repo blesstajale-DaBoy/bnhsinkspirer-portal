@@ -40,6 +40,7 @@ export const InkspirerLogo: React.FC<InkspirerLogoProps> = ({
           alt="The Inkspirer - Official Publication Logo"
           className={`w-full h-full object-contain ${imageSizeClasses[size]}`}
           loading="eager"
+          decoding="async"
         />
       </div>
     </div>

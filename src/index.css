@@ -46,6 +46,22 @@
   padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
 }
 
+/* GPU-composited slideshow progress animation (zero React re-renders) */
+@keyframes inkspirer-slide-progress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.animate-slide-progress {
+  transform-origin: left center;
+  will-change: transform;
+  animation: inkspirer-slide-progress 20s linear forwards;
+}
+
 /* Respect user reduced-motion preferences */
 @media (prefers-reduced-motion: reduce) {
   html {

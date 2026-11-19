@@ -90,12 +90,23 @@ function stripUndefined<T>(obj: T): T {
   return obj;
 }
 
+const pendingStorageTimers = new Map<string, number>();
+
 function safeLocalStorageSet(key: string, value: unknown) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch (err) {
-    console.warn(`localStorage write warning for ${key}:`, err);
+  if (typeof window === 'undefined') return;
+  const existing = pendingStorageTimers.get(key);
+  if (existing !== undefined) {
+    window.clearTimeout(existing);
   }
+  const timer = window.setTimeout(() => {
+    pendingStorageTimers.delete(key);
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch (err) {
+      console.warn(`localStorage write warning for ${key}:`, err);
+    }
+  }, 200);
+  pendingStorageTimers.set(key, timer);
 }
 
 function getArticleTimestamp(id: string): number {
@@ -705,127 +716,7 @@ export function useInkspirerStore() {
       }
     );
 
-    // 4. Submissions Firestore listener
-    const unsubSubmissions = onSnapshot(
-      collection(db, 'submissions'),
-      async (snap) => {
-        if (!isMounted) return;
-        if (!snap.empty) {
-          isCloudInitialized = true;
-          const cloudSubs = snap.docs.map((d) => d.data() as StorySubmission);
-          setSubmissions((prev) => {
-            const cloudIds = new Set(cloudSubs.map((s) => s.id));
-            const pendingOnly = prev.filter(
-              (p) =>
-                !cloudIds.has(p.id) &&
-                !deletedIdsRef.current.has(p.id) &&
-                pendingLocalWritesRef.current.has(`submissions/${p.id}`)
-            );
-            const merged = [
-              ...pendingOnly,
-              ...cloudSubs.filter((s) => !deletedIdsRef.current.has(s.id)),
-            ];
-            safeLocalStorageSet(STORAGE_KEYS.SUBMISSIONS, merged);
-            return merged;
-          });
-        } else {
-          const alreadyInit = await checkInitialized();
-          if (!alreadyInit) {
-            INITIAL_SUBMISSIONS.forEach((sub) => {
-              safeSetDoc('submissions', sub.id, sub, true);
-            });
-          } else {
-            setSubmissions([]);
-            safeLocalStorageSet(STORAGE_KEYS.SUBMISSIONS, []);
-          }
-        }
-      },
-      (err) => {
-        console.warn('Firestore submissions listener info:', err.message);
-      }
-    );
-
-    // 5. Staff Firestore listener
-    const unsubStaff = onSnapshot(
-      collection(db, 'editorialStaff'),
-      async (snap) => {
-        if (!isMounted) return;
-        if (!snap.empty) {
-          isCloudInitialized = true;
-          const cloudStaff = snap.docs.map((d) => d.data() as EditorialMember);
-          setStaff((prev) => {
-            const cloudIds = new Set(cloudStaff.map((m) => m.id));
-            const pendingOnly = prev.filter(
-              (p) =>
-                !cloudIds.has(p.id) &&
-                !deletedIdsRef.current.has(p.id) &&
-                pendingLocalWritesRef.current.has(`editorialStaff/${p.id}`)
-            );
-            const merged = [
-              ...cloudStaff.filter((m) => !deletedIdsRef.current.has(m.id)),
-              ...pendingOnly,
-            ];
-            safeLocalStorageSet(STORAGE_KEYS.STAFF, merged);
-            return merged;
-          });
-        } else {
-          const alreadyInit = await checkInitialized();
-          if (!alreadyInit) {
-            INITIAL_EDITORIAL_STAFF.forEach((member) => {
-              safeSetDoc('editorialStaff', member.id, member, true);
-            });
-          } else {
-            setStaff([]);
-            safeLocalStorageSet(STORAGE_KEYS.STAFF, []);
-          }
-        }
-      },
-      (err) => {
-        console.warn('Firestore staff listener info:', err.message);
-      }
-    );
-
-    // 6. Student Journalist Author Bio Profiles Firestore listener
-    const unsubAuthorProfiles = onSnapshot(
-      collection(db, 'authorProfiles'),
-      async (snap) => {
-        if (!isMounted) return;
-        if (!snap.empty) {
-          isCloudInitialized = true;
-          const cloudProfiles = snap.docs.map((d) => d.data() as StudentAuthorProfile);
-          setAuthorProfiles((prev) => {
-            const cloudIds = new Set(cloudProfiles.map((p) => p.id));
-            const pendingOnly = prev.filter(
-              (p) =>
-                !cloudIds.has(p.id) &&
-                !deletedIdsRef.current.has(p.id) &&
-                pendingLocalWritesRef.current.has(`authorProfiles/${p.id}`)
-            );
-            const merged = [
-              ...pendingOnly,
-              ...cloudProfiles.filter((p) => !deletedIdsRef.current.has(p.id)),
-            ];
-            safeLocalStorageSet(STORAGE_KEYS.AUTHOR_PROFILES, merged);
-            return merged;
-          });
-        } else {
-          const alreadyInit = await checkInitialized();
-          if (!alreadyInit) {
-            INITIAL_AUTHOR_PROFILES.forEach((prof) => {
-              safeSetDoc('authorProfiles', prof.id, prof, true);
-            });
-          } else {
-            setAuthorProfiles([]);
-            safeLocalStorageSet(STORAGE_KEYS.AUTHOR_PROFILES, []);
-          }
-        }
-      },
-      (err) => {
-        console.warn('Firestore authorProfiles listener info:', err.message);
-      }
-    );
-
-    // 7. Publication Edition Config Firestore listener
+    // 7. Publication Edition Config Firestore listener (Tier 1: visible in masthead above the fold)
     const unsubEdition = onSnapshot(
       doc(db, 'publicationSettings', 'edition'),
       (snap) => {
@@ -866,82 +757,214 @@ export function useInkspirerStore() {
       }
     );
 
-    // 8. Active Portal Adviser Config Firestore listener (so Preview adviser photo/edits appear on Live)
-    const unsubActiveAdviser = onSnapshot(
-      doc(db, 'publicationSettings', 'activeAdviser'),
-      (snap) => {
-        if (!isMounted) return;
-        if (snap.exists()) {
-          const cloudAdviser = snap.data() as PortalAdviserConfig;
-          if (cloudAdviser && cloudAdviser.name) {
-            setActiveAdviserConfig(cloudAdviser);
-            safeLocalStorageSet(STORAGE_KEYS.ACTIVE_ADVISER, cloudAdviser);
-          }
-        } else {
-          // Migrate any locally stored adviser config from Preview up to Cloud Firestore
-          let seedAdviser = DEFAULT_ACTIVE_ADVISER;
-          try {
-            const localStored = localStorage.getItem(STORAGE_KEYS.ACTIVE_ADVISER);
-            if (localStored) {
-              const parsed = JSON.parse(localStored) as PortalAdviserConfig;
-              if (parsed && parsed.name) {
-                seedAdviser = parsed;
+    // Tier 2 secondary listeners deferred briefly so mobile first paint & scrolling stay completely fluid
+    const secondaryUnsubs: (() => void)[] = [];
+    const secondaryTimer = window.setTimeout(() => {
+      if (!isMounted) return;
+
+      // 4. Submissions Firestore listener
+      secondaryUnsubs.push(
+        onSnapshot(
+          collection(db, 'submissions'),
+          async (snap) => {
+            if (!isMounted) return;
+            if (!snap.empty) {
+              isCloudInitialized = true;
+              const cloudSubs = snap.docs.map((d) => d.data() as StorySubmission);
+              setSubmissions((prev) => {
+                const cloudIds = new Set(cloudSubs.map((s) => s.id));
+                const pendingOnly = prev.filter(
+                  (p) =>
+                    !cloudIds.has(p.id) &&
+                    !deletedIdsRef.current.has(p.id) &&
+                    pendingLocalWritesRef.current.has(`submissions/${p.id}`)
+                );
+                const merged = [
+                  ...pendingOnly,
+                  ...cloudSubs.filter((s) => !deletedIdsRef.current.has(s.id)),
+                ];
+                safeLocalStorageSet(STORAGE_KEYS.SUBMISSIONS, merged);
+                return merged;
+              });
+            } else {
+              const alreadyInit = await checkInitialized();
+              if (!alreadyInit) {
+                INITIAL_SUBMISSIONS.forEach((sub) => {
+                  safeSetDoc('submissions', sub.id, sub, true);
+                });
+              } else {
+                setSubmissions([]);
+                safeLocalStorageSet(STORAGE_KEYS.SUBMISSIONS, []);
               }
             }
-          } catch {
-            // ignore
+          },
+          (err) => {
+            console.warn('Firestore submissions listener info:', err.message);
           }
-          safeSetDoc('publicationSettings', 'activeAdviser', seedAdviser, true);
-        }
-      },
-      (err) => {
-        console.warn('Firestore activeAdviser listener info:', err.message);
-      }
-    );
+        )
+      );
 
-    // 9. Adviser Handover Log Firestore listener
-    const unsubHandoverLog = onSnapshot(
-      doc(db, 'publicationSettings', 'adviserHandoverLog'),
-      (snap) => {
-        if (!isMounted) return;
-        if (snap.exists()) {
-          const data = snap.data() as { records?: AdviserHandoverRecord[] };
-          if (Array.isArray(data?.records)) {
-            setHandoverHistory(data.records);
-            safeLocalStorageSet(STORAGE_KEYS.HANDOVER_LOG, data.records);
-          }
-        } else {
-          let seedRecords: AdviserHandoverRecord[] = [];
-          try {
-            const localStored = localStorage.getItem(STORAGE_KEYS.HANDOVER_LOG);
-            if (localStored) {
-              const parsed = JSON.parse(localStored);
-              if (Array.isArray(parsed)) seedRecords = parsed;
+      // 5. Staff Firestore listener
+      secondaryUnsubs.push(
+        onSnapshot(
+          collection(db, 'editorialStaff'),
+          async (snap) => {
+            if (!isMounted) return;
+            if (!snap.empty) {
+              isCloudInitialized = true;
+              const cloudStaff = snap.docs.map((d) => d.data() as EditorialMember);
+              setStaff((prev) => {
+                const cloudIds = new Set(cloudStaff.map((m) => m.id));
+                const pendingOnly = prev.filter(
+                  (p) =>
+                    !cloudIds.has(p.id) &&
+                    !deletedIdsRef.current.has(p.id) &&
+                    pendingLocalWritesRef.current.has(`editorialStaff/${p.id}`)
+                );
+                const merged = [
+                  ...cloudStaff.filter((m) => !deletedIdsRef.current.has(m.id)),
+                  ...pendingOnly,
+                ];
+                safeLocalStorageSet(STORAGE_KEYS.STAFF, merged);
+                return merged;
+              });
+            } else {
+              const alreadyInit = await checkInitialized();
+              if (!alreadyInit) {
+                INITIAL_EDITORIAL_STAFF.forEach((member) => {
+                  safeSetDoc('editorialStaff', member.id, member, true);
+                });
+              } else {
+                setStaff([]);
+                safeLocalStorageSet(STORAGE_KEYS.STAFF, []);
+              }
             }
-          } catch {
-            // ignore
+          },
+          (err) => {
+            console.warn('Firestore staff listener info:', err.message);
           }
-          if (seedRecords.length > 0) {
-            safeSetDoc('publicationSettings', 'adviserHandoverLog', { records: seedRecords }, true);
+        )
+      );
+
+      // 6. Student Journalist Author Bio Profiles Firestore listener
+      secondaryUnsubs.push(
+        onSnapshot(
+          collection(db, 'authorProfiles'),
+          async (snap) => {
+            if (!isMounted) return;
+            if (!snap.empty) {
+              isCloudInitialized = true;
+              const cloudProfiles = snap.docs.map((d) => d.data() as StudentAuthorProfile);
+              setAuthorProfiles((prev) => {
+                const cloudIds = new Set(cloudProfiles.map((p) => p.id));
+                const pendingOnly = prev.filter(
+                  (p) =>
+                    !cloudIds.has(p.id) &&
+                    !deletedIdsRef.current.has(p.id) &&
+                    pendingLocalWritesRef.current.has(`authorProfiles/${p.id}`)
+                );
+                const merged = [
+                  ...pendingOnly,
+                  ...cloudProfiles.filter((p) => !deletedIdsRef.current.has(p.id)),
+                ];
+                safeLocalStorageSet(STORAGE_KEYS.AUTHOR_PROFILES, merged);
+                return merged;
+              });
+            } else {
+              const alreadyInit = await checkInitialized();
+              if (!alreadyInit) {
+                INITIAL_AUTHOR_PROFILES.forEach((prof) => {
+                  safeSetDoc('authorProfiles', prof.id, prof, true);
+                });
+              } else {
+                setAuthorProfiles([]);
+                safeLocalStorageSet(STORAGE_KEYS.AUTHOR_PROFILES, []);
+              }
+            }
+          },
+          (err) => {
+            console.warn('Firestore authorProfiles listener info:', err.message);
           }
-        }
-      },
-      (err) => {
-        console.warn('Firestore adviserHandoverLog listener info:', err.message);
-      }
-    );
+        )
+      );
+
+      // 8. Active Portal Adviser Config Firestore listener
+      secondaryUnsubs.push(
+        onSnapshot(
+          doc(db, 'publicationSettings', 'activeAdviser'),
+          (snap) => {
+            if (!isMounted) return;
+            if (snap.exists()) {
+              const cloudAdviser = snap.data() as PortalAdviserConfig;
+              if (cloudAdviser && cloudAdviser.name) {
+                setActiveAdviserConfig(cloudAdviser);
+                safeLocalStorageSet(STORAGE_KEYS.ACTIVE_ADVISER, cloudAdviser);
+              }
+            } else {
+              let seedAdviser = DEFAULT_ACTIVE_ADVISER;
+              try {
+                const localStored = localStorage.getItem(STORAGE_KEYS.ACTIVE_ADVISER);
+                if (localStored) {
+                  const parsed = JSON.parse(localStored) as PortalAdviserConfig;
+                  if (parsed && parsed.name) {
+                    seedAdviser = parsed;
+                  }
+                }
+              } catch {
+                // ignore
+              }
+              safeSetDoc('publicationSettings', 'activeAdviser', seedAdviser, true);
+            }
+          },
+          (err) => {
+            console.warn('Firestore activeAdviser listener info:', err.message);
+          }
+        )
+      );
+
+      // 9. Adviser Handover Log Firestore listener
+      secondaryUnsubs.push(
+        onSnapshot(
+          doc(db, 'publicationSettings', 'adviserHandoverLog'),
+          (snap) => {
+            if (!isMounted) return;
+            if (snap.exists()) {
+              const data = snap.data() as { records?: AdviserHandoverRecord[] };
+              if (Array.isArray(data?.records)) {
+                setHandoverHistory(data.records);
+                safeLocalStorageSet(STORAGE_KEYS.HANDOVER_LOG, data.records);
+              }
+            } else {
+              let seedRecords: AdviserHandoverRecord[] = [];
+              try {
+                const localStored = localStorage.getItem(STORAGE_KEYS.HANDOVER_LOG);
+                if (localStored) {
+                  const parsed = JSON.parse(localStored);
+                  if (Array.isArray(parsed)) seedRecords = parsed;
+                }
+              } catch {
+                // ignore
+              }
+              if (seedRecords.length > 0) {
+                safeSetDoc('publicationSettings', 'adviserHandoverLog', { records: seedRecords }, true);
+              }
+            }
+          },
+          (err) => {
+            console.warn('Firestore adviserHandoverLog listener info:', err.message);
+          }
+        )
+      );
+    }, 900);
 
     return () => {
       isMounted = false;
+      window.clearTimeout(secondaryTimer);
       unsubArticles();
       unsubAnnouncements();
       unsubCategories();
-      unsubSubmissions();
-      unsubStaff();
-      unsubAuthorProfiles();
       unsubEdition();
-      unsubActiveAdviser();
-      unsubHandoverLog();
+      secondaryUnsubs.forEach((fn) => fn());
     };
   }, [safeSetDoc]);
 

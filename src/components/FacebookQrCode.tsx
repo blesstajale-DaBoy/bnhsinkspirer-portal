@@ -7,31 +7,50 @@ interface FacebookQrCodeProps {
   size?: number;
 }
 
+const FB_PAGE_URL = 'https://www.facebook.com/profile.php?id=61565709500947';
+const qrDataUrlCache = new Map<number, string>();
+
 export const FacebookQrCode: React.FC<FacebookQrCodeProps> = ({
   className = '',
   size = 76,
 }) => {
-  const [qrDataUrl, setQrDataUrl] = useState<string>('');
-  const fbUrl = 'https://www.facebook.com/profile.php?id=61565709500947';
+  const [qrDataUrl, setQrDataUrl] = useState<string>(() => qrDataUrlCache.get(size) || '');
+  const fbUrl = FB_PAGE_URL;
 
   useEffect(() => {
-    QRCode.toDataURL(
-      fbUrl,
-      {
-        width: size * 2, // 2x resolution for crisp high-DPI displays
-        margin: 1,
-        color: {
-          dark: '#38080F', // School deep maroon
-          light: '#FFFFFF',
+    const cached = qrDataUrlCache.get(size);
+    if (cached) {
+      setQrDataUrl(cached);
+      return;
+    }
+
+    let cancelled = false;
+    const generate = () => {
+      QRCode.toDataURL(
+        fbUrl,
+        {
+          width: size * 2, // 2x resolution for crisp high-DPI displays
+          margin: 1,
+          color: {
+            dark: '#38080F', // School deep maroon
+            light: '#FFFFFF',
+          },
+          errorCorrectionLevel: 'M',
         },
-        errorCorrectionLevel: 'M',
-      },
-      (err, url) => {
-        if (!err && url) {
-          setQrDataUrl(url);
+        (err, url) => {
+          if (!cancelled && !err && url) {
+            qrDataUrlCache.set(size, url);
+            setQrDataUrl(url);
+          }
         }
-      }
-    );
+      );
+    };
+
+    const timerId = window.setTimeout(generate, 150);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timerId);
+    };
   }, [size, fbUrl]);
 
   return (

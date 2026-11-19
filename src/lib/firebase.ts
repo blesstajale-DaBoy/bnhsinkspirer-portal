@@ -85,7 +85,7 @@ export function handleFirestoreError(
   throw new Error(JSON.stringify(errInfo));
 }
 
-// Test connection on boot per Firebase guidelines
+// Test connection on boot per Firebase guidelines (deferred slightly for faster mobile first paint)
 async function testConnection() {
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
@@ -95,7 +95,11 @@ async function testConnection() {
     }
   }
 }
-testConnection();
+if (typeof window !== 'undefined') {
+  window.setTimeout(() => {
+    void testConnection();
+  }, 1500);
+}
 
 export {
   signInWithPopup,

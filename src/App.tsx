@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, lazy, Suspense } from 'react';
 import { useInkspirerStore } from './hooks/useInkspirerStore';
 import { Category, Article } from './types';
 import { Navbar } from './components/Navbar';
@@ -8,12 +8,21 @@ import { StoryFilter } from './components/StoryFilter';
 import { CategoryStorySlider } from './components/CategoryStorySlider';
 import { LeadStory } from './components/LeadStory';
 import { StoryGrid } from './components/StoryGrid';
-import { ArticleReaderModal } from './components/ArticleReaderModal';
-import { SubmitStoryModal } from './components/SubmitStoryModal';
-import { EditorialDeskModal } from './components/EditorialDeskModal';
-import { StaffLoginModal } from './components/StaffLoginModal';
 import { ReadLaterNotification } from './components/ReadLaterNotification';
 import { Footer } from './components/Footer';
+
+const ArticleReaderModal = lazy(() =>
+  import('./components/ArticleReaderModal').then((m) => ({ default: m.ArticleReaderModal }))
+);
+const SubmitStoryModal = lazy(() =>
+  import('./components/SubmitStoryModal').then((m) => ({ default: m.SubmitStoryModal }))
+);
+const EditorialDeskModal = lazy(() =>
+  import('./components/EditorialDeskModal').then((m) => ({ default: m.EditorialDeskModal }))
+);
+const StaffLoginModal = lazy(() =>
+  import('./components/StaffLoginModal').then((m) => ({ default: m.StaffLoginModal }))
+);
 
 export default function App() {
   const {
@@ -303,27 +312,31 @@ export default function App() {
         editionConfig={editionConfig}
       />
 
-      {/* Reader Modal */}
-      <ArticleReaderModal
-        article={activeSelectedArticle}
-        onClose={() => setSelectedArticle(null)}
-        isBookmarked={activeSelectedArticle ? bookmarks.includes(activeSelectedArticle.id) : false}
-        onToggleBookmark={handleToggleBookmarkClick}
-        isLiked={activeSelectedArticle ? likedArticles.includes(activeSelectedArticle.id) : false}
-        onToggleLike={handleToggleLikeClick}
-        savedProgress={activeSelectedArticle ? readingProgressMap[activeSelectedArticle.id] ?? 0 : 0}
-        onUpdateReadingProgress={updateArticleReadingProgress}
-        authorProfiles={authorProfiles}
-        articles={articles}
-        onSelectArticle={handleSelectArticle}
-        onUpdateAuthorProfile={updateAuthorProfile}
-        onAddAuthorProfile={addAuthorProfile}
-        onOpenEditorialDeskAuthorTab={() => {
-          setSelectedArticle(null);
-          setEditorialDeskInitialTab('author-bios');
-          setIsEditorialDeskOpen(true);
-        }}
-      />
+      {/* Reader Modal (lazy-loaded only when an article is opened) */}
+      {activeSelectedArticle && (
+        <Suspense fallback={null}>
+          <ArticleReaderModal
+            article={activeSelectedArticle}
+            onClose={() => setSelectedArticle(null)}
+            isBookmarked={bookmarks.includes(activeSelectedArticle.id)}
+            onToggleBookmark={handleToggleBookmarkClick}
+            isLiked={likedArticles.includes(activeSelectedArticle.id)}
+            onToggleLike={handleToggleLikeClick}
+            savedProgress={readingProgressMap[activeSelectedArticle.id] ?? 0}
+            onUpdateReadingProgress={updateArticleReadingProgress}
+            authorProfiles={authorProfiles}
+            articles={articles}
+            onSelectArticle={handleSelectArticle}
+            onUpdateAuthorProfile={updateAuthorProfile}
+            onAddAuthorProfile={addAuthorProfile}
+            onOpenEditorialDeskAuthorTab={() => {
+              setSelectedArticle(null);
+              setEditorialDeskInitialTab('author-bios');
+              setIsEditorialDeskOpen(true);
+            }}
+          />
+        </Suspense>
+      )}
 
       {/* Local-Storage Based Read-Later Catch-Up Notification System */}
       <ReadLaterNotification
@@ -339,75 +352,93 @@ export default function App() {
         }}
       />
 
-      {/* Submit Story Modal (Dual action: Download .txt and/or Save to Editorial Desk) */}
-      <SubmitStoryModal
-        isOpen={isSubmitOpen}
-        onClose={() => setIsSubmitOpen(false)}
-        onSubmit={addSubmission}
-        onPublishSubmission={publishSubmissionAsArticle}
-        onViewArticle={handleSelectArticle}
-        onOpenEditorialDesk={() => setIsEditorialDeskOpen(true)}
-        categories={categories}
-      />
+      {/* Submit Story Modal (lazy-loaded only when opened) */}
+      {isSubmitOpen && (
+        <Suspense fallback={null}>
+          <SubmitStoryModal
+            isOpen={isSubmitOpen}
+            onClose={() => setIsSubmitOpen(false)}
+            onSubmit={addSubmission}
+            onPublishSubmission={publishSubmissionAsArticle}
+            onViewArticle={handleSelectArticle}
+            onOpenEditorialDesk={() => setIsEditorialDeskOpen(true)}
+            categories={categories}
+          />
+        </Suspense>
+      )}
 
-      {/* Staff Firebase Auth Login Modal */}
-      <StaffLoginModal
-        isOpen={isLoginOpen}
-        onClose={() => setIsLoginOpen(false)}
-        onOpenEditorialDesk={() => {
-          setIsLoginOpen(false);
-          setIsEditorialDeskOpen(true);
-        }}
-        activeAdviserConfig={activeAdviserConfig}
-      />
+      {/* Staff Firebase Auth Login Modal (lazy-loaded only when opened) */}
+      {isLoginOpen && (
+        <Suspense fallback={null}>
+          <StaffLoginModal
+            isOpen={isLoginOpen}
+            onClose={() => setIsLoginOpen(false)}
+            onOpenEditorialDesk={() => {
+              setIsLoginOpen(false);
+              setIsEditorialDeskOpen(true);
+            }}
+            activeAdviserConfig={activeAdviserConfig}
+          />
+        </Suspense>
+      )}
 
-      {/* Editorial Desk / Adviser Management Console */}
-      <EditorialDeskModal
-        isOpen={isEditorialDeskOpen}
-        onClose={() => {
-          setIsEditorialDeskOpen(false);
-          setEditorialDeskInitialTab(undefined);
-        }}
-        articles={articles}
-        announcements={announcements}
-        submissions={submissions}
-        staff={staff}
-        categories={categories}
-        authorProfiles={authorProfiles}
-        initialTab={editorialDeskInitialTab}
-        onPublishSubmission={publishSubmissionAsArticle}
-        onUpdateSubmissionStatus={updateSubmissionStatus}
-        onCreateArticle={createArticle}
-        onUpdateArticle={updateArticle}
-        onDeleteArticle={deleteArticle}
-        onAddAnnouncement={addAnnouncement}
-        onUpdateAnnouncement={updateAnnouncement}
-        onDeleteAnnouncement={deleteAnnouncement}
-        onTogglePinAnnouncement={togglePinAnnouncement}
-        onAddCategory={addCategory}
-        onUpdateCategory={updateCategory}
-        onDeleteCategory={deleteCategory}
-        onAddStaffMember={addStaffMember}
-        onUpdateStaffMember={updateStaffMember}
-        onDeleteStaffMember={deleteStaffMember}
-        onAddAuthorProfile={addAuthorProfile}
-        onUpdateAuthorProfile={updateAuthorProfile}
-        onDeleteAuthorProfile={deleteAuthorProfile}
-        editionConfig={editionConfig}
-        onUpdateEditionConfig={updateEditionConfig}
-        activeAdviserConfig={activeAdviserConfig}
-        onUpdateActiveAdviserConfig={updateActiveAdviserConfig}
-        handoverHistory={handoverHistory}
-        onAddHandoverRecord={addHandoverRecord}
-        autoSyncEnabled={autoSyncEnabled}
-        onToggleAutoSync={setAutoSyncEnabled}
-        syncStatus={syncStatus}
-        lastSyncedAt={lastSyncedAt}
-        onSyncAllToCloud={syncAllToCloud}
-        onViewArticle={handleSelectArticle}
-        onOpenAccountModal={() => setIsLoginOpen(true)}
-        onResetDefaults={resetToDefaults}
-      />
+      {/* Editorial Desk / Adviser Management Console (lazy-loaded only when opened) */}
+      {isEditorialDeskOpen && (
+        <Suspense
+          fallback={
+            <div className="fixed inset-0 z-50 bg-stone-950/80 flex items-center justify-center text-white text-sm font-medium">
+              Opening Editorial Desk...
+            </div>
+          }
+        >
+          <EditorialDeskModal
+            isOpen={isEditorialDeskOpen}
+            onClose={() => {
+              setIsEditorialDeskOpen(false);
+              setEditorialDeskInitialTab(undefined);
+            }}
+            articles={articles}
+            announcements={announcements}
+            submissions={submissions}
+            staff={staff}
+            categories={categories}
+            authorProfiles={authorProfiles}
+            initialTab={editorialDeskInitialTab}
+            onPublishSubmission={publishSubmissionAsArticle}
+            onUpdateSubmissionStatus={updateSubmissionStatus}
+            onCreateArticle={createArticle}
+            onUpdateArticle={updateArticle}
+            onDeleteArticle={deleteArticle}
+            onAddAnnouncement={addAnnouncement}
+            onUpdateAnnouncement={updateAnnouncement}
+            onDeleteAnnouncement={deleteAnnouncement}
+            onTogglePinAnnouncement={togglePinAnnouncement}
+            onAddCategory={addCategory}
+            onUpdateCategory={updateCategory}
+            onDeleteCategory={deleteCategory}
+            onAddStaffMember={addStaffMember}
+            onUpdateStaffMember={updateStaffMember}
+            onDeleteStaffMember={deleteStaffMember}
+            onAddAuthorProfile={addAuthorProfile}
+            onUpdateAuthorProfile={updateAuthorProfile}
+            onDeleteAuthorProfile={deleteAuthorProfile}
+            editionConfig={editionConfig}
+            onUpdateEditionConfig={updateEditionConfig}
+            activeAdviserConfig={activeAdviserConfig}
+            onUpdateActiveAdviserConfig={updateActiveAdviserConfig}
+            handoverHistory={handoverHistory}
+            onAddHandoverRecord={addHandoverRecord}
+            autoSyncEnabled={autoSyncEnabled}
+            onToggleAutoSync={setAutoSyncEnabled}
+            syncStatus={syncStatus}
+            lastSyncedAt={lastSyncedAt}
+            onSyncAllToCloud={syncAllToCloud}
+            onViewArticle={handleSelectArticle}
+            onOpenAccountModal={() => setIsLoginOpen(true)}
+            onResetDefaults={resetToDefaults}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }
